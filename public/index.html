@@ -53,7 +53,7 @@
       cursor: pointer;
     }
 
-    .top-bar button:hover { background: #2A241B; }
+    .top-bar button:hover:not(:disabled) { background: #2A241B; }
 
     .top-bar button:disabled {
       opacity: 0.4;
@@ -162,6 +162,7 @@
           micSelect.appendChild(option);
         }
       } catch (err) {
+        console.error('[capito] Device enumeration failed:', err);
         showError('Microphone access denied — check browser permissions');
       }
     }
@@ -293,14 +294,19 @@
           }
         };
 
-        ws.onclose = () => {
-          showError('Connection lost — refresh the page');
+        ws.onclose = (e) => {
+          if (e.code !== 1000) {
+            showError('Connection lost — refresh the page');
+          }
         };
 
         ws.onerror = () => {
           showError('Connection lost — refresh the page');
         };
       } catch (err) {
+        // Clean up any partially-acquired resources
+        if (source) { source.mediaStream.getTracks().forEach(t => t.stop()); source = null; }
+        if (audioContext) { audioContext.close(); audioContext = null; }
         showError(
           err.name === 'NotAllowedError'
             ? 'Microphone access denied — check browser permissions'
