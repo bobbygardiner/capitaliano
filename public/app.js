@@ -157,7 +157,7 @@ function renderSession(session) {
       applyEntityHighlighting(el, line.text, line.entities);
     }
     if (line.idioms && line.idioms.length) {
-      applyIdiomHighlighting(el, line.text, line.idioms, line.entities || []);
+      applyIdiomHighlighting(el, line.text, line.idioms);
     }
   }
   updateLineClasses();
@@ -285,7 +285,7 @@ function applyEntityHighlighting(lineEl, originalText, entities) {
   italianEl.innerHTML = html;
 }
 
-function applyIdiomHighlighting(lineEl, originalText, idioms, entities) {
+function applyIdiomHighlighting(lineEl, originalText, idioms) {
   const italianEl = lineEl.querySelector('.line-italian');
   if (!italianEl || !idioms.length) return;
 
@@ -338,7 +338,7 @@ function handleEvent(event) {
         applyEntityHighlighting(el, event.text || el.querySelector('.line-italian').textContent, event.entities);
       }
       if (event.idioms && event.idioms.length) {
-        applyIdiomHighlighting(el, el.querySelector('.line-italian').textContent, event.idioms, event.entities || []);
+        applyIdiomHighlighting(el, el.querySelector('.line-italian').textContent, event.idioms);
       }
       // Update in-memory session for vocab panel
       if (currentSession && currentSession.lines) {
@@ -348,12 +348,14 @@ function handleEvent(event) {
           if (event.entities) line.entities = event.entities;
           if (event.idioms) line.idioms = event.idioms;
         }
-        renderVocab();
+        if (event.idioms && event.idioms.length) renderVocab();
       }
       break;
     }
 
     case 'session.active': {
+      // Skip if already loaded (initActiveSession may have run first)
+      if (currentSession && currentSession.id === event.session.id) break;
       currentSession = event.session;
       sessionNameEl.textContent = event.session.name;
       sessionNameEl.classList.remove('hidden');
@@ -560,10 +562,10 @@ function renderVocab() {
 
 // --- Utilities ---
 
+const _escDiv = document.createElement('div');
 function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  _escDiv.textContent = str;
+  return _escDiv.innerHTML;
 }
 
 function escapeAttr(str) {

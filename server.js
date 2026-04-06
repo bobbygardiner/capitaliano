@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, extname, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { config } from 'dotenv';
 import {
@@ -26,6 +26,10 @@ const MIME = {
 };
 const PORT = 3000;
 
+// Route patterns (hoisted to avoid per-request regex compilation)
+const RE_SESSION_ID = /^\/api\/sessions\/(sess_\d+)$/;
+const RE_SESSION_END = /^\/api\/sessions\/(sess_\d+)\/end$/;
+
 // --- REST API helpers ---
 
 function sendJson(res, status, data) {
@@ -36,7 +40,11 @@ function sendJson(res, status, data) {
 async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  return JSON.parse(Buffer.concat(chunks).toString() || '{}');
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString() || '{}');
+  } catch {
+    throw new Error('Invalid JSON body');
+  }
 }
 
 // --- HTTP server: static files + REST API ---
@@ -47,27 +55,23 @@ const server = createServer(async (req, res) => {
   // REST API routes
   if (urlPath.startsWith('/api/')) {
     try {
-      // GET /api/sessions
       if (urlPath === '/api/sessions' && req.method === 'GET') {
-        return sendJson(res, 200, { sessions: await sessions.list() });
+        return sendJson(res, 200, { sessions: sessions.list() });
       }
 
-      // POST /api/sessions
       if (urlPath === '/api/sessions' && req.method === 'POST') {
         const body = await readBody(req);
         const session = await sessions.create(body.name);
         return sendJson(res, 201, session);
       }
 
-      // GET /api/sessions/:id
-      const getMatch = urlPath.match(/^\/api\/sessions\/(sess_\d+)$/);
+      const getMatch = urlPath.match(RE_SESSION_ID);
       if (getMatch && req.method === 'GET') {
         const session = await sessions.get(getMatch[1]);
         return sendJson(res, 200, session);
       }
 
-      // POST /api/sessions/:id/end
-      const endMatch = urlPath.match(/^\/api\/sessions\/(sess_\d+)\/end$/);
+      const endMatch = urlPath.match(RE_SESSION_END);
       if (endMatch && req.method === 'POST') {
         const active = sessions.getActive();
         if (!active || active.id !== endMatch[1]) {
@@ -80,13 +84,14 @@ const server = createServer(async (req, res) => {
       sendJson(res, 404, { error: 'Not found' });
     } catch (err) {
       console.error('[capito] API error:', err.message);
-      sendJson(res, err.message.includes('already') ? 409 : 500, { error: err.message });
+      const status = err.message.includes('already active') ? 409 : 500;
+      sendJson(res, status, { error: err.message });
     }
     return;
   }
 
   // Static files
-  const filePath = resolve(join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath));
+  const filePath = resolve(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
   if (!filePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403);
     res.end('Forbidden');
@@ -157,21 +162,19 @@ wss.on('connection', async (ws) => {
   let sentenceBuffer = '';
   const SENTENCE_END = /[.!?]\s*$/;
 
-  function finalizeSentence(text) {
-    if (!text.trim()) return;
-    const lineId = sessions.addLine(text.trim(), new Date().toISOString());
-    ws.send(JSON.stringify({ type: 'transcription.done', lineId, text: text.trim() }));
+  function finalizeSentence(raw) {
+    const text = raw.trim();
+    if (!text) return;
+    const lineId = sessions.addLine(text);
+    ws.send(JSON.stringify({ type: 'transcription.done', lineId, text }));
 
     // Fire-and-forget translation
     if (lineId !== null) {
-      const finalText = text.trim();
-      analyzeCommentary(finalText).then(analysis => {
+      analyzeCommentary(text).then(analysis => {
         if (analysis && ws.readyState === ws.OPEN) {
           sessions.updateLine(lineId, analysis);
           ws.send(JSON.stringify({
-            type: 'analysis',
-            lineId,
-            text: finalText,
+            type: 'analysis', lineId, text,
             translation: analysis.translation,
             entities: analysis.entities,
             idioms: analysis.idioms,
@@ -188,23 +191,18 @@ wss.on('connection', async (ws) => {
         if (ws.readyState !== ws.OPEN) break;
 
         if (event.type === 'transcription.text.delta') {
-          // Forward delta to browser for live display
           ws.send(JSON.stringify(event));
-
-          // Accumulate and check for sentence boundary
           sentenceBuffer += event.text;
           if (SENTENCE_END.test(sentenceBuffer)) {
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
           }
         } else if (event.type === 'transcription.done') {
-          // Stream ended — finalize any remaining buffer
           if (sentenceBuffer.trim()) {
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
           }
         } else {
-          // Forward other events as-is
           ws.send(JSON.stringify(event));
         }
       }
@@ -220,6 +218,7 @@ wss.on('connection', async (ws) => {
   ws.on('close', async () => {
     console.log('[capito] Browser disconnected');
     mistralReady = false;
+    sentenceBuffer = '';
     if (connection && !connection.isClosed) {
       try {
         await connection.endAudio();
@@ -240,13 +239,10 @@ server.listen(PORT, () => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\n[capito] Shutting down...');
+async function gracefulShutdown() {
   await sessions.shutdown();
   process.exit(0);
-});
+}
 
-process.on('SIGTERM', async () => {
-  await sessions.shutdown();
-  process.exit(0);
-});
+process.on('SIGINT', async () => { console.log('\n[capito] Shutting down...'); await gracefulShutdown(); });
+process.on('SIGTERM', gracefulShutdown);

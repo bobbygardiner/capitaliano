@@ -9,7 +9,6 @@
 // Converts to PCM16 16kHz mono and streams in 256ms chunks.
 
 import { spawn } from 'node:child_process';
-import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import WebSocket from 'ws';
 

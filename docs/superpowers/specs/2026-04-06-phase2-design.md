@@ -94,18 +94,14 @@ sessions/                    # JSON session files (gitignored)
 5. On completion, sends `{ type: 'analysis', lineId, translation, entities, idioms }` to browser
 6. Browser updates the line with translation data
 
-### Anthropic API
+### Translation via Claude Code CLI
 
-- Model: `claude-haiku-4-5` (fast, cheap, ~$1/match)
-- Structured output via `output_config.format` + `zodOutputFormat()`
-- Schema: `{ translation: string, entities: [{text, type, start, end}], idioms: [{expression, meaning}] }`
-- System prompt includes Italian football vocabulary reference
-- Prompt caching on system prompt for cost reduction
-- Error handling: SDK retries 3x, skip on failure (line stays with translation: null)
-
-### Dependencies
-
-Add: `@anthropic-ai/sdk`, `zod`
+- Uses `claude -p` (Claude Code CLI) instead of direct Anthropic API
+- No separate API key needed — piggybacks on existing Claude Code subscription
+- Prompt instructs Claude to return JSON with translation, entities, idioms
+- `child_process.execFile('claude', ['-p', prompt, '--output-format', 'json'])`
+- Error handling: if subprocess fails, skip (line stays with translation: null)
+- Slightly higher latency than direct API (subprocess spawn) — acceptable for async post-processing
 
 ## WebSocket Protocol (expanded)
 
