@@ -494,11 +494,16 @@ function handleEvent(event) {
   }
 }
 
-// --- Audio capture & WebSocket ---
+// --- Audio capture ---
 
 async function start() {
   if (!currentSession) {
     showError('Create a session first');
+    return;
+  }
+
+  if (!persistentWs || persistentWs.readyState !== WebSocket.OPEN) {
+    showError('Not connected — please refresh');
     return;
   }
 
@@ -525,45 +530,24 @@ async function start() {
     pcmNode = new AudioWorkletNode(audioContext, 'pcm-processor');
     source.connect(pcmNode);
 
-    const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${wsProtocol}//${location.host}`);
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen = () => {
-      pcmNode.port.onmessage = (e) => {
-        if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 65536) {
-          ws.send(e.data);
-        }
-      };
-
-      startBtn.classList.add('hidden');
-      stopBtn.classList.remove('hidden');
-      statusEl.classList.remove('hidden');
-      micSelect.disabled = true;
-      transcript.classList.add('live');
-
-      // Show waiting indicator until first transcription arrives
-      waitingEl = document.createElement('div');
-      waitingEl.className = 'waiting-indicator';
-      waitingEl.textContent = 'Waiting for speech…';
-      transcript.appendChild(waitingEl);
-    };
-
-    ws.onmessage = (e) => {
-      try {
-        handleEvent(JSON.parse(e.data));
-      } catch (err) {
-        console.error('[capito] Failed to parse event:', err);
+    // Send audio via the persistent WebSocket
+    pcmNode.port.onmessage = (e) => {
+      if (persistentWs && persistentWs.readyState === WebSocket.OPEN && persistentWs.bufferedAmount < 65536) {
+        persistentWs.send(e.data);
       }
     };
 
-    ws.onclose = (e) => {
-      if (e.code !== 1000) showError('Connection lost — refresh the page');
-    };
+    startBtn.classList.add('hidden');
+    stopBtn.classList.remove('hidden');
+    statusEl.classList.remove('hidden');
+    micSelect.disabled = true;
+    transcript.classList.add('live');
 
-    ws.onerror = () => {
-      showError('Connection lost — refresh the page');
-    };
+    // Show waiting indicator until first transcription arrives
+    waitingEl = document.createElement('div');
+    waitingEl.className = 'waiting-indicator';
+    waitingEl.textContent = 'Waiting for speech…';
+    transcript.appendChild(waitingEl);
   } catch (err) {
     if (source) { source.mediaStream.getTracks().forEach(t => t.stop()); source = null; }
     if (audioContext) { audioContext.close(); audioContext = null; }
@@ -598,11 +582,9 @@ function teardown() {
   if (pcmNode) { pcmNode.port.onmessage = null; pcmNode.disconnect(); }
   if (source) { source.mediaStream.getTracks().forEach(t => t.stop()); source.disconnect(); }
   if (audioContext) audioContext.close();
-  if (ws && ws.readyState === WebSocket.OPEN) ws.close(1000, 'User stopped');
   audioContext = null;
   source = null;
   pcmNode = null;
-  ws = null;
 }
 
 // --- Translation toggle ---
