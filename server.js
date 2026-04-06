@@ -81,6 +81,13 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 200, result);
       }
 
+      // DELETE /api/sessions/:id
+      const delMatch = urlPath.match(RE_SESSION_ID);
+      if (delMatch && req.method === 'DELETE') {
+        await sessions.remove(delMatch[1]);
+        return sendJson(res, 200, { deleted: true });
+      }
+
       sendJson(res, 404, { error: 'Not found' });
     } catch (err) {
       console.error('[capito] API error:', err.message);

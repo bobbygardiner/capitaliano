@@ -71,10 +71,12 @@ function renderSessionsList(sessions) {
         <div class="session-label">${escapeHtml(s.name)}</div>
         <div class="session-meta">${formatSessionTime(s.startedAt)} · ${s.lineCount} lines</div>
       </div>
-      ${isLive ? '<button class="end-session-btn" data-id="' + s.id + '">End</button>' : ''}
+      ${isLive
+        ? '<button class="end-session-btn session-action-btn" data-id="' + s.id + '">End</button>'
+        : '<button class="del-session-btn session-action-btn" data-id="' + s.id + '">Del</button>'}
     `;
     item.addEventListener('click', (e) => {
-      if (e.target.classList.contains('end-session-btn')) return;
+      if (e.target.classList.contains('session-action-btn')) return;
       loadSession(s.id);
       closeSessions();
     });
@@ -90,6 +92,28 @@ function renderSessionsList(sessions) {
           loadSessionsList();
         } catch (err) {
           console.error('[capito] Failed to end session:', err);
+        }
+      });
+    }
+    const delBtn = item.querySelector('.del-session-btn');
+    if (delBtn) {
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete "${s.name}"?`)) return;
+        try {
+          await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' });
+          if (currentSession && currentSession.id === s.id) {
+            currentSession = null;
+            sessionNameEl.classList.add('hidden');
+            costIndicator.classList.add('hidden');
+            tabBar.classList.add('hidden');
+            clearTranscriptDisplay();
+            emptyState.classList.remove('hidden');
+            transcript.appendChild(emptyState);
+          }
+          loadSessionsList();
+        } catch (err) {
+          console.error('[capito] Failed to delete session:', err);
         }
       });
     }
