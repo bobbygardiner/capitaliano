@@ -146,7 +146,7 @@ async function loadSession(id) {
 function renderSession(session) {
   clearTranscriptDisplay();
   for (const line of session.lines) {
-    const el = createLineElement(line.lineId, line.text);
+    const el = createLineElement(line.lineId, line.text, line.timestamp);
     if (line.translation) {
       addTranslation(el, line.translation);
     }
@@ -201,15 +201,35 @@ function clearTranscriptDisplay() {
   lineElements.clear();
 }
 
-function createLineElement(lineId, text) {
+function formatElapsed(timestamp) {
+  if (!currentSession || !timestamp) return '';
+  const start = new Date(currentSession.startedAt).getTime();
+  const now = new Date(timestamp).getTime();
+  const secs = Math.max(0, Math.floor((now - start) / 1000));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function createLineElement(lineId, text, timestamp) {
   const el = document.createElement('div');
   el.className = 'transcript-line';
   el.dataset.lineId = lineId;
 
+  const header = document.createElement('div');
+  header.className = 'line-header';
+
+  const ts = document.createElement('span');
+  ts.className = 'line-timestamp';
+  ts.textContent = formatElapsed(timestamp);
+  header.appendChild(ts);
+
   const italian = document.createElement('div');
   italian.className = 'line-italian';
   italian.textContent = text || '';
-  el.appendChild(italian);
+  header.appendChild(italian);
+
+  el.appendChild(header);
 
   const translation = document.createElement('div');
   translation.className = 'line-translation';
@@ -286,7 +306,7 @@ function handleEvent(event) {
     case 'transcription.text.delta':
       if (waitingEl) { waitingEl.remove(); waitingEl = null; }
       if (!activeLineEl) {
-        activeLineEl = createLineElement(undefined, '');
+        activeLineEl = createLineElement(undefined, '', new Date().toISOString());
         updateLineClasses();
       }
       activeLineEl.querySelector('.line-italian').textContent += event.text;
