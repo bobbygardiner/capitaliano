@@ -148,8 +148,23 @@ wss.on('connection', async (ws) => {
   const MIN_SENTENCE_LENGTH = 40;
   const SENTENCE_END = /[.!?]\s*$/;
 
+  // Remove stuttered/duplicated words from Mistral transcription
+  function dedup(text) {
+    return text
+      // Remove repeated words: "che che" → "che", "Juan Juan" → "Juan"
+      .replace(/\b(\w+)\s+\1\b/gi, '$1')
+      // Remove repeated word pairs: "con con un un" → "con un"
+      .replace(/\b(\w+\s+\w+)\s+\1\b/gi, '$1')
+      // Remove stuttered beginnings: "bra bravovo" → "bravovo", "att attacco" → "attacco"
+      .replace(/\b(\w{2,4})\s+\1\w+\b/gi, (match, prefix, offset, str) => match.split(/\s+/).pop())
+      // Clean up double commas/spaces
+      .replace(/,,/g, ',')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   function finalizeSentence(raw) {
-    const text = raw.trim();
+    const text = dedup(raw.trim());
     if (!text) return;
     const lineId = sessions.addLine(text);
     broadcast({ type: 'transcription.done', lineId, text });

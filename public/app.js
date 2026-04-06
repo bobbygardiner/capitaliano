@@ -590,15 +590,8 @@ async function stop() {
   }
   updateLineClasses();
 
-  // End session on server
-  if (currentSession && !currentSession.endedAt) {
-    try {
-      await fetch(`/api/sessions/${currentSession.id}/end`, { method: 'POST' });
-      currentSession.endedAt = new Date().toISOString();
-    } catch (err) {
-      console.error('[capito] Failed to end session:', err);
-    }
-  }
+  // Don't end the session — user can resume with Start.
+  // Session is ended explicitly via the sessions panel.
 }
 
 function teardown() {
@@ -731,18 +724,21 @@ async function initActiveSession() {
   }
 }
 
-// Connect a viewer WebSocket on page load to receive broadcasts
-// (separate from the audio-sending WebSocket created on Start)
-function connectViewer() {
+// Persistent WebSocket — always connected, used for both viewing and sending audio
+let persistentWs = null;
+
+function connectPersistentWs() {
   const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const viewerWs = new WebSocket(`${wsProtocol}//${location.host}`);
-  viewerWs.onmessage = (e) => {
+  persistentWs = new WebSocket(`${wsProtocol}//${location.host}`);
+  persistentWs.binaryType = 'arraybuffer';
+  persistentWs.onmessage = (e) => {
     try { handleEvent(JSON.parse(e.data)); } catch {}
   };
-  viewerWs.onclose = () => {
-    // Reconnect after a delay
-    setTimeout(connectViewer, 3000);
+  persistentWs.onclose = () => {
+    persistentWs = null;
+    setTimeout(connectPersistentWs, 3000);
   };
+  persistentWs.onerror = () => {};
 }
 
 window.addEventListener('beforeunload', teardown);
