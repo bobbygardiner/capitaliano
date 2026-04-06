@@ -502,8 +502,17 @@ async function start() {
     return;
   }
 
+  // Wait for persistent WS to be ready (may be reconnecting)
   if (!persistentWs || persistentWs.readyState !== WebSocket.OPEN) {
-    showError('Not connected — please refresh');
+    startBtn.disabled = true;
+    const waitForWs = setInterval(() => {
+      if (persistentWs && persistentWs.readyState === WebSocket.OPEN) {
+        clearInterval(waitForWs);
+        startBtn.disabled = false;
+        start();
+      }
+    }, 500);
+    setTimeout(() => { clearInterval(waitForWs); startBtn.disabled = false; showError('Not connected — please refresh'); }, 10000);
     return;
   }
 
