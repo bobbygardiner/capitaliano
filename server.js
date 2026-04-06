@@ -120,8 +120,18 @@ const server = createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server });
 
+// Broadcast an event to all connected WebSocket clients
+function broadcast(data) {
+  const msg = typeof data === 'string' ? data : JSON.stringify(data);
+  for (const client of wss.clients) {
+    if (client.readyState === client.OPEN) {
+      client.send(msg);
+    }
+  }
+}
+
 wss.on('connection', async (ws) => {
-  console.log('[capito] Browser connected');
+  console.log('[capito] Client connected');
 
   // Send active session info if one exists
   const active = sessions.getActive();
@@ -129,45 +139,11 @@ wss.on('connection', async (ws) => {
     ws.send(JSON.stringify({ type: 'session.active', session: active }));
   }
 
-  const client = new RealtimeTranscription({
-    apiKey: process.env.MISTRAL_API_KEY,
-  });
-
-  let connection;
+  // Mistral connection is lazy — only created when first binary audio arrives
+  let connection = null;
   let mistralReady = false;
 
-  // Forward browser audio → Mistral (only after Mistral connection is ready)
-  ws.on('message', (data, isBinary) => {
-    if (isBinary && mistralReady && connection && !connection.isClosed) {
-      connection.sendAudio(data);
-    }
-  });
-
-  try {
-    connection = await client.connect(
-      'voxtral-mini-transcribe-realtime-2602',
-      {
-        audioFormat: {
-          encoding: AudioEncoding.PcmS16le,
-          sampleRate: 16000,
-        },
-        targetStreamingDelayMs: 480,
-      }
-    );
-    mistralReady = true;
-    console.log('[capito] Mistral connected');
-  } catch (err) {
-    console.error('[capito] Mistral connection failed:', err.message);
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Failed to connect to Mistral' }));
-    }
-    ws.close();
-    return;
-  }
-
-  // Sentence accumulator — Mistral doesn't send transcription.done at utterance
-  // boundaries, only at stream end. We detect sentence breaks ourselves.
-  // Require at least 40 chars to avoid splitting on abbreviations, scores, or names.
+  // Sentence accumulator
   let sentenceBuffer = '';
   const MIN_SENTENCE_LENGTH = 40;
   const SENTENCE_END = /[.!?]\s*$/;
@@ -176,34 +152,40 @@ wss.on('connection', async (ws) => {
     const text = raw.trim();
     if (!text) return;
     const lineId = sessions.addLine(text);
-    ws.send(JSON.stringify({ type: 'transcription.done', lineId, text }));
+    broadcast({ type: 'transcription.done', lineId, text });
 
-    // Fire-and-forget translation
     if (lineId !== null) {
       analyzeCommentary(text).then(analysis => {
-        if (analysis && ws.readyState === ws.OPEN) {
+        if (analysis) {
           sessions.updateLine(lineId, analysis);
-          ws.send(JSON.stringify({
+          broadcast({
             type: 'analysis', lineId, text,
             translation: analysis.translation,
             segments: analysis.segments,
             entities: analysis.entities,
             idioms: analysis.idioms,
             costUsd: analysis.costUsd,
-          }));
+          });
         }
       });
     }
   }
 
-  // Forward Mistral events → browser (with sentence segmentation)
-  (async () => {
+  async function startMistral() {
+    const client = new RealtimeTranscription({ apiKey: process.env.MISTRAL_API_KEY });
     try {
+      connection = await client.connect('voxtral-mini-transcribe-realtime-2602', {
+        audioFormat: { encoding: AudioEncoding.PcmS16le, sampleRate: 16000 },
+        targetStreamingDelayMs: 480,
+      });
+      mistralReady = true;
+      console.log('[capito] Mistral connected');
+
+      // Forward Mistral events with sentence segmentation
       for await (const event of connection) {
         if (ws.readyState !== ws.OPEN) break;
-
         if (event.type === 'transcription.text.delta') {
-          ws.send(JSON.stringify(event));
+          broadcast(event);
           sentenceBuffer += event.text;
           if (sentenceBuffer.length >= MIN_SENTENCE_LENGTH && SENTENCE_END.test(sentenceBuffer)) {
             finalizeSentence(sentenceBuffer);
@@ -214,30 +196,33 @@ wss.on('connection', async (ws) => {
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
           }
-        } else {
-          ws.send(JSON.stringify(event));
         }
       }
     } catch (err) {
-      console.error('[capito] Mistral stream error:', err.message);
+      console.error('[capito] Mistral error:', err.message);
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: String(err.message || err) }));
       }
     }
-  })();
+  }
 
-  // Cleanup on browser disconnect
+  // Only connect to Mistral when binary audio arrives
+  ws.on('message', (data, isBinary) => {
+    if (!isBinary) return;
+    if (!connection && !mistralReady) {
+      startMistral(); // fire-and-forget, buffers audio until ready
+    }
+    if (mistralReady && connection && !connection.isClosed) {
+      connection.sendAudio(data);
+    }
+  });
+
+  // Cleanup on disconnect
   ws.on('close', async () => {
-    console.log('[capito] Browser disconnected');
-    mistralReady = false;
+    console.log('[capito] Client disconnected');
     sentenceBuffer = '';
     if (connection && !connection.isClosed) {
-      try {
-        await connection.endAudio();
-        await connection.close();
-      } catch {
-        // ignore cleanup errors
-      }
+      try { await connection.endAudio(); await connection.close(); } catch {}
     }
   });
 });

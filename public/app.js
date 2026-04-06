@@ -728,8 +728,23 @@ async function initActiveSession() {
   }
 }
 
+// Connect a viewer WebSocket on page load to receive broadcasts
+// (separate from the audio-sending WebSocket created on Start)
+function connectViewer() {
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const viewerWs = new WebSocket(`${wsProtocol}//${location.host}`);
+  viewerWs.onmessage = (e) => {
+    try { handleEvent(JSON.parse(e.data)); } catch {}
+  };
+  viewerWs.onclose = () => {
+    // Reconnect after a delay
+    setTimeout(connectViewer, 3000);
+  };
+}
+
 window.addEventListener('beforeunload', teardown);
 startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);
 loadDevices();
 initActiveSession();
+connectViewer();
