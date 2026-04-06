@@ -128,7 +128,209 @@
   <div id="transcript" class="transcript"></div>
 
   <script>
-    // JS will be added in Task 5
+    const micSelect = document.getElementById('mic-select');
+    const startBtn = document.getElementById('start-btn');
+    const status = document.getElementById('status');
+    const errorBanner = document.getElementById('error-banner');
+    const transcript = document.getElementById('transcript');
+
+    // In-memory transcript data (structured for future persistence)
+    const lines = [];
+
+    let audioContext = null;
+    let source = null;
+    let pcmNode = null;
+    let ws = null;
+    let activeLine = null;
+
+    // --- Device enumeration ---
+
+    async function loadDevices() {
+      try {
+        // Request permission first (needed to get device labels)
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        tempStream.getTracks().forEach(t => t.stop());
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+
+        micSelect.innerHTML = '';
+        for (const device of audioInputs) {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.textContent = device.label || `Microphone ${micSelect.length + 1}`;
+          micSelect.appendChild(option);
+        }
+      } catch (err) {
+        showError('Microphone access denied — check browser permissions');
+      }
+    }
+
+    // --- Error display ---
+
+    function showError(message) {
+      errorBanner.textContent = message;
+      errorBanner.classList.remove('hidden');
+    }
+
+    // --- Transcript rendering ---
+
+    function createNewLine() {
+      // Dim the previous active line
+      if (activeLine) {
+        activeLine.classList.remove('active');
+      }
+
+      activeLine = document.createElement('div');
+      activeLine.className = 'transcript-line active';
+      transcript.appendChild(activeLine);
+
+      lines.push({ text: '', timestamp: Date.now(), final: false });
+    }
+
+    function appendDelta(text) {
+      if (!activeLine) createNewLine();
+      activeLine.textContent += text;
+      lines[lines.length - 1].text += text;
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function finaliseLine(text) {
+      if (activeLine) {
+        if (text) activeLine.textContent = text;
+        lines[lines.length - 1].text = activeLine.textContent;
+        lines[lines.length - 1].final = true;
+      }
+      activeLine = null;
+    }
+
+    // --- WebSocket message handling ---
+
+    function handleEvent(event) {
+      switch (event.type) {
+        case 'transcription.text.delta':
+          appendDelta(event.text);
+          break;
+
+        case 'transcription.done':
+          finaliseLine(event.text);
+          break;
+
+        case 'transcription.language':
+          console.log('[capito] Detected language:', event.audioLanguage);
+          break;
+
+        case 'error': {
+          const msg = event.error
+            ? typeof event.error.message === 'string'
+              ? event.error.message
+              : JSON.stringify(event.error.message)
+            : event.message || 'Unknown error';
+          showError(msg);
+          break;
+        }
+      }
+    }
+
+    // --- Start transcription ---
+
+    async function start() {
+      startBtn.disabled = true;
+
+      try {
+        // 1. Get mic stream with selected device
+        const constraints = {
+          audio: {
+            deviceId: micSelect.value ? { exact: micSelect.value } : undefined,
+            channelCount: 1,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // 2. AudioContext at 16kHz (browser auto-resamples)
+        audioContext = new AudioContext({ sampleRate: 16000 });
+        if (audioContext.state === 'suspended') await audioContext.resume();
+
+        // 3. Load AudioWorklet
+        await audioContext.audioWorklet.addModule('/pcm-processor.js');
+
+        // 4. Connect pipeline: mic → worklet
+        source = audioContext.createMediaStreamSource(stream);
+        pcmNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+        source.connect(pcmNode);
+        // Do NOT connect to destination — we don't want playback
+
+        // 5. Open WebSocket
+        const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${wsProtocol}//${location.host}`);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = () => {
+          // 6. Wire AudioWorklet output → WebSocket
+          pcmNode.port.onmessage = (e) => {
+            if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 65536) {
+              ws.send(e.data);
+            }
+          };
+
+          // Update UI
+          startBtn.classList.add('hidden');
+          status.classList.remove('hidden');
+          micSelect.disabled = true;
+
+          // Create first transcript line
+          createNewLine();
+        };
+
+        ws.onmessage = (e) => {
+          try {
+            handleEvent(JSON.parse(e.data));
+          } catch (err) {
+            console.error('[capito] Failed to parse event:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          showError('Connection lost — refresh the page');
+        };
+
+        ws.onerror = () => {
+          showError('Connection lost — refresh the page');
+        };
+      } catch (err) {
+        showError(
+          err.name === 'NotAllowedError'
+            ? 'Microphone access denied — check browser permissions'
+            : `Error: ${err.message}`
+        );
+        startBtn.disabled = false;
+      }
+    }
+
+    // --- Teardown (on page unload) ---
+
+    function teardown() {
+      if (pcmNode) {
+        pcmNode.port.onmessage = null;
+        pcmNode.disconnect();
+      }
+      if (source) {
+        source.mediaStream.getTracks().forEach(t => t.stop());
+        source.disconnect();
+      }
+      if (audioContext) audioContext.close();
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close(1000, 'Page unload');
+    }
+
+    window.addEventListener('beforeunload', teardown);
+
+    // --- Init ---
+
+    startBtn.addEventListener('click', start);
+    loadDevices();
   </script>
 </body>
 </html>
