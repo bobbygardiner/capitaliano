@@ -227,23 +227,23 @@ function applyEntityHighlighting(lineEl, originalText, entities) {
   const italianEl = lineEl.querySelector('.line-italian');
   if (!italianEl || !entities.length) return;
 
-  // Track which types we've seen for first-occurrence labels
+  // Single forward pass: escape non-entity text, wrap entities in spans
   const seenTypes = new Set();
-  const sorted = [...entities].sort((a, b) => b.start - a.start);
-  let html = escapeHtml(originalText);
+  const sorted = [...entities].sort((a, b) => a.start - b.start);
+  let html = '';
+  let cursor = 0;
 
-  // We need to work on escaped text, so recalculate offsets
-  // Simpler: build from original text with spans
-  html = originalText;
   for (const ent of sorted) {
-    const before = html.slice(0, ent.start);
-    const entityText = html.slice(ent.start, ent.end);
-    const after = html.slice(ent.end);
-    const labelAttr = !seenTypes.has(ent.type) ? ` data-label="${ent.type}"` : '';
+    const start = Math.max(cursor, ent.start);
+    const end = Math.min(originalText.length, ent.end);
+    if (start > cursor) html += escapeHtml(originalText.slice(cursor, start));
+    const labelAttr = !seenTypes.has(ent.type) ? ` data-label="${escapeAttr(ent.type)}"` : '';
     seenTypes.add(ent.type);
-    html = `${before}<span data-entity="${escapeAttr(ent.type)}"${labelAttr}>${escapeHtml(entityText)}</span>${after}`;
+    html += `<span data-entity="${escapeAttr(ent.type)}"${labelAttr}>${escapeHtml(originalText.slice(start, end))}</span>`;
+    cursor = end;
   }
 
+  if (cursor < originalText.length) html += escapeHtml(originalText.slice(cursor));
   italianEl.innerHTML = html;
 }
 
@@ -455,7 +455,7 @@ function escapeHtml(str) {
 }
 
 function escapeAttr(str) {
-  return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // --- Init ---

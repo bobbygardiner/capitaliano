@@ -69,6 +69,10 @@ const server = createServer(async (req, res) => {
       // POST /api/sessions/:id/end
       const endMatch = urlPath.match(/^\/api\/sessions\/(sess_\d+)\/end$/);
       if (endMatch && req.method === 'POST') {
+        const active = sessions.getActive();
+        if (!active || active.id !== endMatch[1]) {
+          return sendJson(res, 409, { error: 'Session is not the active session' });
+        }
         const result = await sessions.end();
         return sendJson(res, 200, result);
       }
@@ -167,6 +171,7 @@ wss.on('connection', async (ws) => {
                 ws.send(JSON.stringify({
                   type: 'analysis',
                   lineId,
+                  text: event.text,
                   translation: analysis.translation,
                   entities: analysis.entities,
                   idioms: analysis.idioms,
