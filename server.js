@@ -198,13 +198,7 @@ wss.on('connection', async (ws) => {
       console.log('[capito] Mistral connected');
 
       // Forward Mistral events with sentence segmentation
-      console.log('[capito] Listening for Mistral events...');
       for await (const event of connection) {
-        if (event.type === 'transcription.text.delta') {
-          process.stdout.write('.');
-        } else {
-          console.log('\n[capito] Event:', event.type);
-        }
         if (ws.readyState !== ws.OPEN) break;
         if (event.type === 'transcription.text.delta') {
           broadcast(event);
