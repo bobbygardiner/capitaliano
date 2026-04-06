@@ -208,6 +208,18 @@
     .transcript::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
     .transcript::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+    .waiting-indicator {
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 400;
+      animation: waitPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes waitPulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 0.3; }
+    }
+
     .transcript-line {
       margin-bottom: 14px;
       opacity: 0.28;
@@ -432,6 +444,25 @@
     }
 
     .session-item.active .session-label { font-weight: 500; }
+
+    .end-session-btn {
+      font-family: inherit;
+      font-size: 11px;
+      padding: 3px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+    }
+
+    .end-session-btn:hover {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
 
     .session-live-dot {
       width: 6px;

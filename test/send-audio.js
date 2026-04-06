@@ -8,7 +8,7 @@
 // Accepts any format ffmpeg can read (mp3, wav, m4a, etc).
 // Converts to PCM16 16kHz mono and streams in 256ms chunks.
 
-import { execSync, execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import WebSocket from 'ws';
@@ -29,14 +29,14 @@ console.log(`[test] Server: ${serverUrl}`);
 console.log(`[test] Converting to PCM16 16kHz mono...`);
 
 // Convert audio to raw PCM16 16kHz mono using ffmpeg
-const ffmpeg = execFile('ffmpeg', [
+const ffmpeg = spawn('ffmpeg', [
   '-i', resolve(audioFile),
   '-f', 's16le',
   '-ar', '16000',
   '-ac', '1',
   '-acodec', 'pcm_s16le',
   'pipe:1',
-], { maxBuffer: 100 * 1024 * 1024 });
+]);
 
 const pcmChunks = [];
 ffmpeg.stdout.on('data', (chunk) => pcmChunks.push(chunk));

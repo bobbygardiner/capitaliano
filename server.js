@@ -152,32 +152,56 @@ wss.on('connection', async (ws) => {
     return;
   }
 
-  // Forward Mistral events → browser (with interception for session/translation)
+  // Sentence accumulator — Mistral doesn't send transcription.done at utterance
+  // boundaries, only at stream end. We detect sentence breaks ourselves.
+  let sentenceBuffer = '';
+  const SENTENCE_END = /[.!?]\s*$/;
+
+  function finalizeSentence(text) {
+    if (!text.trim()) return;
+    const lineId = sessions.addLine(text.trim(), new Date().toISOString());
+    ws.send(JSON.stringify({ type: 'transcription.done', lineId, text: text.trim() }));
+
+    // Fire-and-forget translation
+    if (lineId !== null) {
+      const finalText = text.trim();
+      analyzeCommentary(finalText).then(analysis => {
+        if (analysis && ws.readyState === ws.OPEN) {
+          sessions.updateLine(lineId, analysis);
+          ws.send(JSON.stringify({
+            type: 'analysis',
+            lineId,
+            text: finalText,
+            translation: analysis.translation,
+            entities: analysis.entities,
+            idioms: analysis.idioms,
+          }));
+        }
+      });
+    }
+  }
+
+  // Forward Mistral events → browser (with sentence segmentation)
   (async () => {
     try {
       for await (const event of connection) {
         if (ws.readyState !== ws.OPEN) break;
 
-        if (event.type === 'transcription.done') {
-          // Intercept: save to session and trigger translation
-          const lineId = sessions.addLine(event.text, new Date().toISOString());
-          ws.send(JSON.stringify({ ...event, lineId }));
+        if (event.type === 'transcription.text.delta') {
+          // Forward delta to browser for live display
+          ws.send(JSON.stringify(event));
 
-          // Fire-and-forget translation
-          if (lineId !== null && event.text && event.text.trim()) {
-            analyzeCommentary(event.text).then(analysis => {
-              if (analysis && ws.readyState === ws.OPEN) {
-                sessions.updateLine(lineId, analysis);
-                ws.send(JSON.stringify({
-                  type: 'analysis',
-                  lineId,
-                  text: event.text,
-                  translation: analysis.translation,
-                  entities: analysis.entities,
-                  idioms: analysis.idioms,
-                }));
-              }
-            });
+          // Accumulate and check for sentence boundary
+          sentenceBuffer += event.text;
+          if (SENTENCE_END.test(sentenceBuffer)) {
+            finalizeSentence(sentenceBuffer);
+            sentenceBuffer = '';
+          }
+        } else if (event.type === 'transcription.done') {
+          // Stream ended — finalize any remaining buffer
+          if (sentenceBuffer.trim()) {
+            finalizeSentence(sentenceBuffer);
+            sentenceBuffer = '';
           }
         } else {
           // Forward other events as-is

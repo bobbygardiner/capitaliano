@@ -21,6 +21,7 @@ let source = null;
 let pcmNode = null;
 let ws = null;
 let activeLineEl = null;
+let waitingEl = null;
 let lineElements = new Map(); // lineId -> DOM element
 
 // --- Sessions panel ---
@@ -61,15 +62,32 @@ function renderSessionsList(sessions) {
     const isLive = !s.endedAt;
     item.innerHTML = `
       ${isLive ? '<div class="session-live-dot"></div>' : '<div class="session-dot-spacer"></div>'}
-      <div>
+      <div style="flex:1;min-width:0">
         <div class="session-label">${escapeHtml(s.name)}</div>
         <div class="session-meta">${formatSessionTime(s.startedAt)} · ${s.lineCount} lines</div>
       </div>
+      ${isLive ? '<button class="end-session-btn" data-id="' + s.id + '">End</button>' : ''}
     `;
-    item.addEventListener('click', () => {
+    item.addEventListener('click', (e) => {
+      if (e.target.classList.contains('end-session-btn')) return;
       loadSession(s.id);
       closeSessions();
     });
+    const endBtn = item.querySelector('.end-session-btn');
+    if (endBtn) {
+      endBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          await fetch(`/api/sessions/${s.id}/end`, { method: 'POST' });
+          if (currentSession && currentSession.id === s.id) {
+            currentSession.endedAt = new Date().toISOString();
+          }
+          loadSessionsList();
+        } catch (err) {
+          console.error('[capito] Failed to end session:', err);
+        }
+      });
+    }
     sessionsList.appendChild(item);
   }
 }
@@ -271,6 +289,7 @@ function applyIdiomHighlighting(lineEl, originalText, idioms, entities) {
 function handleEvent(event) {
   switch (event.type) {
     case 'transcription.text.delta':
+      if (waitingEl) { waitingEl.remove(); waitingEl = null; }
       if (!activeLineEl) {
         activeLineEl = createLineElement(undefined, '');
         updateLineClasses();
@@ -375,6 +394,12 @@ async function start() {
       stopBtn.classList.remove('hidden');
       statusEl.classList.remove('hidden');
       micSelect.disabled = true;
+
+      // Show waiting indicator until first transcription arrives
+      waitingEl = document.createElement('div');
+      waitingEl.className = 'waiting-indicator';
+      waitingEl.textContent = 'Waiting for speech…';
+      transcript.appendChild(waitingEl);
     };
 
     ws.onmessage = (e) => {
@@ -460,7 +485,21 @@ function escapeAttr(str) {
 
 // --- Init ---
 
+async function initActiveSession() {
+  try {
+    const res = await fetch('/api/sessions');
+    const data = await res.json();
+    const active = (data.sessions || []).find(s => !s.endedAt);
+    if (active) {
+      await loadSession(active.id);
+    }
+  } catch (err) {
+    console.error('[capito] Failed to check active session:', err);
+  }
+}
+
 window.addEventListener('beforeunload', teardown);
 startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);
 loadDevices();
+initActiveSession();
