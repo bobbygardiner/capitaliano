@@ -17,6 +17,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Test fixtures
+test/fixtures/
+
 # Superpowers brainstorm artifacts
 .superpowers/
 
