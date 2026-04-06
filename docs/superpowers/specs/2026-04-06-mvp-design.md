@@ -91,8 +91,8 @@ Under 100 lines. Three responsibilities:
 
 ### 1. Serve Static Files
 
-Vanilla `http.createServer`. Serves `public/` with MIME types for `.html`,
-`.js`, `.css`. No Express.
+Vanilla `http.createServer` on port 3000. Serves `public/` with MIME types for
+`.html`, `.js`, `.css`. No Express.
 
 ### 2. WebSocket Upgrade
 
@@ -114,7 +114,8 @@ Iterates SDK async event stream, forwards to browser as JSON:
 - `error` → `{ type, error }`
 
 No state, no storage, no transformation. Each browser connection gets its own
-Mistral session. Browser disconnect tears down Mistral connection.
+Mistral session. On browser WebSocket `close` event, end the Mistral audio
+stream and close the SDK connection.
 
 ## Frontend UI
 
