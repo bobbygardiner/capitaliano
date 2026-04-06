@@ -1,0 +1,14 @@
+{
+  "name": "capito",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@mistralai/mistralai": "^2.1.2",
+    "dotenv": "^16.4.7",
+    "ws": "^8.18.2"
+  }
+}
