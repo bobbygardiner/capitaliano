@@ -272,37 +272,40 @@
       color: var(--text);
     }
 
-    /* Segmented translation pairs */
+    /* Segmented translation pairs — flow inline like a paragraph */
     .line-segments {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .segment-pair { margin-bottom: 4px; }
-
-    .segment-italian {
       font-size: 19px;
       line-height: 1.65;
       color: var(--text);
     }
 
+    .segment-pair {
+      display: inline;
+    }
+
+    .segment-italian {
+      display: inline;
+    }
+
     .segment-translation {
+      display: none;
       font-size: 13px;
-      line-height: 1.45;
+      line-height: 1.4;
       font-weight: 400;
       color: #9A8E7F;
       font-style: italic;
       padding-left: 2px;
-      max-height: 0;
-      opacity: 0;
-      overflow: hidden;
-      transition: max-height 0.3s var(--ease-out), opacity 0.25s ease 0.05s;
+    }
+
+    .show-translations .segment-pair {
+      display: inline-block;
+      vertical-align: top;
+      margin-bottom: 6px;
     }
 
     .show-translations .segment-translation {
-      max-height: 3em;
-      opacity: 1;
+      display: block;
+      margin-bottom: 2px;
     }
 
     /* Fallback: monolithic translation (when no segments available) */
