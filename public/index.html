@@ -55,6 +55,17 @@
 
     .top-bar button:hover:not(:disabled) { background: #2A241B; }
 
+    #clear-btn {
+      background: transparent;
+      color: #8A8780;
+      border: 1px solid #D5CFC7;
+    }
+
+    #clear-btn:hover:not(:disabled) {
+      background: #F0EDE8;
+      color: #3D3529;
+    }
+
     .top-bar button:disabled {
       opacity: 0.4;
       cursor: default;
@@ -119,6 +130,8 @@
       <option value="">Loading devices…</option>
     </select>
     <button id="start-btn">Start</button>
+    <button id="stop-btn" class="hidden">Stop</button>
+    <button id="clear-btn" class="hidden">Clear</button>
     <div id="status" class="status hidden">
       <div class="status-dot"></div>
       <span>Capturing</span>
@@ -130,6 +143,8 @@
   <script>
     const micSelect = document.getElementById('mic-select');
     const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const clearBtn = document.getElementById('clear-btn');
     const status = document.getElementById('status');
     const errorBanner = document.getElementById('error-banner');
     const transcript = document.getElementById('transcript');
@@ -201,8 +216,40 @@
         if (text) activeLine.textContent = text;
         lines[lines.length - 1].text = activeLine.textContent;
         lines[lines.length - 1].final = true;
+        saveTranscript();
       }
       activeLine = null;
+    }
+
+    // --- Persistence (localStorage) ---
+
+    function saveTranscript() {
+      const finalised = lines.filter(l => l.final && l.text);
+      localStorage.setItem('capito-transcript', JSON.stringify(finalised));
+    }
+
+    function restoreTranscript() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('capito-transcript'));
+        if (!saved || !saved.length) return;
+        for (const line of saved) {
+          const div = document.createElement('div');
+          div.className = 'transcript-line';
+          div.textContent = line.text;
+          transcript.appendChild(div);
+          lines.push({ text: line.text, timestamp: line.timestamp, final: true });
+        }
+        transcript.scrollTop = transcript.scrollHeight;
+      } catch {
+        // ignore corrupt data
+      }
+    }
+
+    function clearTranscript() {
+      lines.length = 0;
+      transcript.innerHTML = '';
+      activeLine = null;
+      localStorage.removeItem('capito-transcript');
     }
 
     // --- WebSocket message handling ---
@@ -279,6 +326,7 @@
 
           // Update UI
           startBtn.classList.add('hidden');
+          stopBtn.classList.remove('hidden');
           status.classList.remove('hidden');
           micSelect.disabled = true;
 
@@ -316,7 +364,26 @@
       }
     }
 
-    // --- Teardown (on page unload) ---
+    // --- Stop transcription ---
+
+    function stop() {
+      teardown();
+      stopBtn.classList.add('hidden');
+      startBtn.classList.remove('hidden');
+      startBtn.disabled = false;
+      status.classList.add('hidden');
+      micSelect.disabled = false;
+      // Finalise any in-progress line
+      if (activeLine) {
+        lines[lines.length - 1].final = true;
+        activeLine.classList.remove('active');
+        activeLine = null;
+      }
+      saveTranscript();
+      if (lines.length) clearBtn.classList.remove('hidden');
+    }
+
+    // --- Teardown ---
 
     function teardown() {
       if (pcmNode) {
@@ -336,6 +403,13 @@
     // --- Init ---
 
     startBtn.addEventListener('click', start);
+    stopBtn.addEventListener('click', stop);
+    clearBtn.addEventListener('click', () => {
+      clearTranscript();
+      clearBtn.classList.add('hidden');
+    });
+    restoreTranscript();
+    if (lines.length) clearBtn.classList.remove('hidden');
     loadDevices();
   </script>
 </body>
