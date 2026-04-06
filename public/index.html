@@ -222,20 +222,37 @@
 
     .transcript-line {
       margin-bottom: 14px;
-      opacity: 0.28;
-      font-weight: 300;
+      opacity: 1;
+      font-weight: 400;
       transition: opacity 0.6s var(--ease-out), font-weight 0.3s ease;
       will-change: opacity;
     }
 
-    .transcript-line.active {
+    /* Karaoke cascade only when live-streaming */
+    .transcript.live .transcript-line {
+      opacity: 0.28;
+      font-weight: 300;
+    }
+
+    .transcript.live .transcript-line.active {
       opacity: 1;
       font-weight: 500;
       animation: lineEnter 0.4s var(--ease-out) both;
     }
 
-    .transcript-line.recent-1 { opacity: 0.6; font-weight: 400; }
-    .transcript-line.recent-2 { opacity: 0.4; font-weight: 300; }
+    .transcript.live .transcript-line.recent-1 { opacity: 0.6; font-weight: 400; }
+    .transcript.live .transcript-line.recent-2 { opacity: 0.4; font-weight: 300; }
+
+    /* When user scrolls up during live, un-dim for readability */
+    .transcript.live.scrolled-up .transcript-line {
+      opacity: 0.85;
+      font-weight: 400;
+    }
+
+    .transcript.live.scrolled-up .transcript-line.active {
+      opacity: 1;
+      font-weight: 500;
+    }
 
     @keyframes lineEnter {
       from { opacity: 0; transform: translateY(6px); }
@@ -288,23 +305,6 @@
     [data-entity="stadium"] { --entity-color: var(--entity-stadium); text-decoration-color: var(--entity-stadium); }
     [data-entity="coach"] { --entity-color: var(--entity-coach); text-decoration-color: var(--entity-coach); }
 
-    [data-entity][data-label]::after {
-      content: attr(data-label);
-      font-size: 8px;
-      font-weight: 600;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      color: var(--bg);
-      background: var(--entity-color);
-      padding: 1px 4px;
-      border-radius: 3px;
-      margin-left: 3px;
-      vertical-align: super;
-      line-height: 1;
-      text-decoration: none;
-      display: inline-block;
-    }
-
     /* --- Idiom highlighting --- */
     [data-idiom] {
       text-decoration: underline;
@@ -320,19 +320,20 @@
       content: attr(data-idiom);
       position: absolute;
       bottom: calc(100% + 8px);
-      left: 50%;
-      transform: translateX(-50%) translateY(4px);
-      max-width: 280px;
+      left: 0;
+      transform: translateY(4px);
+      min-width: 200px;
+      max-width: 380px;
       white-space: normal;
       background: var(--text);
       color: var(--bg);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 400;
       font-style: normal;
-      line-height: 1.4;
-      padding: 8px 12px;
+      line-height: 1.5;
+      padding: 10px 14px;
       border-radius: 8px;
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-lg);
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
@@ -344,8 +345,7 @@
       content: '';
       position: absolute;
       bottom: calc(100% + 2px);
-      left: 50%;
-      transform: translateX(-50%);
+      left: 12px;
       border: 6px solid transparent;
       border-top-color: var(--text);
       opacity: 0;
@@ -355,10 +355,29 @@
     }
 
     [data-idiom]:hover::before, [data-idiom]:focus::before {
-      opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
+      opacity: 1; visibility: visible; transform: translateY(0);
     }
     [data-idiom]:hover::after, [data-idiom]:focus::after {
       opacity: 1; visibility: visible;
+    }
+
+    /* Flip tooltip below when near top of page */
+    [data-idiom].tooltip-below::before {
+      bottom: auto;
+      top: calc(100% + 8px);
+      transform: translateY(-4px);
+    }
+
+    [data-idiom].tooltip-below:hover::before,
+    [data-idiom].tooltip-below:focus::before {
+      transform: translateY(0);
+    }
+
+    [data-idiom].tooltip-below::after {
+      bottom: auto;
+      top: calc(100% + 2px);
+      border-top-color: transparent;
+      border-bottom-color: var(--text);
     }
 
     /* --- Sessions panel --- */

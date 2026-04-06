@@ -233,6 +233,8 @@ function updateLineClasses() {
 }
 
 function scrollToBottom() {
+  // Only auto-scroll if user hasn't scrolled up
+  if (transcript.classList.contains('scrolled-up')) return;
   transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' });
 }
 
@@ -245,23 +247,16 @@ function applyEntityHighlighting(lineEl, originalText, entities) {
   const italianEl = lineEl.querySelector('.line-italian');
   if (!italianEl || !entities.length) return;
 
-  // Single forward pass: escape non-entity text, wrap entities in spans
-  const seenTypes = new Set();
-  const sorted = [...entities].sort((a, b) => a.start - b.start);
-  let html = '';
-  let cursor = 0;
-
+  // Text-search based highlighting (robust against offset errors from LLM)
+  let html = escapeHtml(originalText);
+  // Sort by text length descending to match longer entities first
+  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
   for (const ent of sorted) {
-    const start = Math.max(cursor, ent.start);
-    const end = Math.min(originalText.length, ent.end);
-    if (start > cursor) html += escapeHtml(originalText.slice(cursor, start));
-    const labelAttr = !seenTypes.has(ent.type) ? ` data-label="${escapeAttr(ent.type)}"` : '';
-    seenTypes.add(ent.type);
-    html += `<span data-entity="${escapeAttr(ent.type)}"${labelAttr}>${escapeHtml(originalText.slice(start, end))}</span>`;
-    cursor = end;
+    const escaped = escapeHtml(ent.text);
+    if (html.includes(escaped)) {
+      html = html.replaceAll(escaped, `<span data-entity="${escapeAttr(ent.type)}">${escaped}</span>`);
+    }
   }
-
-  if (cursor < originalText.length) html += escapeHtml(originalText.slice(cursor));
   italianEl.innerHTML = html;
 }
 
@@ -394,6 +389,7 @@ async function start() {
       stopBtn.classList.remove('hidden');
       statusEl.classList.remove('hidden');
       micSelect.disabled = true;
+      transcript.classList.add('live');
 
       // Show waiting indicator until first transcription arrives
       waitingEl = document.createElement('div');
@@ -436,6 +432,7 @@ async function stop() {
   startBtn.disabled = false;
   statusEl.classList.add('hidden');
   micSelect.disabled = false;
+  transcript.classList.remove('live', 'scrolled-up');
   if (activeLineEl) {
     activeLineEl.classList.remove('active');
     activeLineEl = null;
@@ -482,6 +479,23 @@ function escapeHtml(str) {
 function escapeAttr(str) {
   return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+// --- Scroll detection (un-dim on scroll up during live) ---
+
+transcript.addEventListener('scroll', () => {
+  if (!transcript.classList.contains('live')) return;
+  const atBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 60;
+  transcript.classList.toggle('scrolled-up', !atBottom);
+});
+
+// --- Tooltip flip (show below when near top) ---
+
+document.addEventListener('mouseenter', (e) => {
+  const idiom = e.target.closest('[data-idiom]');
+  if (!idiom) return;
+  const rect = idiom.getBoundingClientRect();
+  idiom.classList.toggle('tooltip-below', rect.top < 100);
+}, true);
 
 // --- Init ---
 
