@@ -7,7 +7,7 @@ displays a rolling Italian transcript in real time.
 
 ## Current phase: MVP
 Transcription only. No translation yet. Goal: watch a football match and read
-a rolling Italian transcript on the laptop screen.
+a rolling Italian transcript on a second screen.
 
 ## Stack
 - **Backend**: Node.js (minimal — just enough to proxy audio to Mistral)
@@ -17,6 +17,23 @@ a rolling Italian transcript on the laptop screen.
 - **No Anthropic API in MVP** — translation is step 2
 
 ## Project structure
+
+```
+capito/
+├── server.js              # HTTP + WebSocket server, Mistral SDK proxy
+├── public/
+│   ├── index.html         # Single-page app (HTML, CSS, JS inline)
+│   └── pcm-processor.js   # AudioWorklet for PCM16 conversion
+├── package.json           # Three deps: ws, dotenv, @mistralai/mistralai
+├── .env                   # MISTRAL_API_KEY (gitignored)
+├── .env.example           # Template for .env
+├── context.md             # Project context and roadmap
+├── CLAUDE.md              # This file
+└── docs/
+    └── superpowers/
+        ├── specs/          # Design specs
+        └── plans/          # Implementation plans
+```
 
 ## Key technical details
 - Audio format Voxtral expects: PCM16, 16kHz, mono, little-endian
