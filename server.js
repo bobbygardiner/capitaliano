@@ -61,7 +61,7 @@ const server = createServer(async (req, res) => {
 
       if (urlPath === '/api/sessions' && req.method === 'POST') {
         const body = await readBody(req);
-        const session = await sessions.create(body.name);
+        const session = await sessions.create(body.name, body.context);
         return sendJson(res, 201, session);
       }
 
@@ -155,7 +155,8 @@ wss.on('connection', async (ws) => {
     broadcast({ type: 'transcription.done', lineId, text });
 
     if (lineId !== null) {
-      analyzeCommentary(text).then(analysis => {
+      const ctx = sessions.getActive()?.context;
+      analyzeCommentary(text, ctx).then(analysis => {
         if (analysis) {
           sessions.updateLine(lineId, analysis);
           broadcast({

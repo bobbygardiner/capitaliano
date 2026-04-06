@@ -135,11 +135,14 @@ function formatSessionTime(timestamp) {
 newSessionBtn.addEventListener('click', async () => {
   const name = prompt('Session name:', 'New Session');
   if (!name) return;
+  const context = prompt('Match context (optional — paste squad names, coaches, stadium):', '');
   try {
+    const body = { name };
+    if (context) body.context = context;
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const err = await res.json();
