@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { join, extname, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { config } from 'dotenv';
 import {
@@ -10,6 +10,12 @@ import {
 
 config();
 
+if (!process.env.MISTRAL_API_KEY) {
+  console.error('[capito] MISTRAL_API_KEY is not set. Copy .env.example to .env and add your key.');
+  process.exit(1);
+}
+
+const PUBLIC_DIR = resolve('public');
 const MIME = {
   '.html': 'text/html',
   '.js': 'application/javascript',
@@ -20,7 +26,12 @@ const PORT = 3000;
 // Static file server
 const server = createServer(async (req, res) => {
   const urlPath = req.url.split('?')[0];
-  const filePath = join('public', urlPath === '/' ? 'index.html' : urlPath);
+  const filePath = resolve(join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath));
+  if (!filePath.startsWith(PUBLIC_DIR)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
   try {
     const data = await readFile(filePath);
     const ct = MIME[extname(filePath)] || 'application/octet-stream';
@@ -57,9 +68,11 @@ wss.on('connection', async (ws) => {
     console.log('[capito] Mistral connected');
   } catch (err) {
     console.error('[capito] Mistral connection failed:', err.message);
-    ws.send(
-      JSON.stringify({ type: 'error', message: 'Failed to connect to Mistral' })
-    );
+    if (ws.readyState === ws.OPEN) {
+      ws.send(
+        JSON.stringify({ type: 'error', message: 'Failed to connect to Mistral' })
+      );
+    }
     ws.close();
     return;
   }
