@@ -1,5 +1,134 @@
 <!DOCTYPE html>
 <html lang="it">
-<head><meta charset="utf-8"><title>Capito</title></head>
-<body><p>Capito is running.</p></body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capito</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Sora', -apple-system, 'Helvetica Neue', sans-serif;
+      background: #FAF8F5;
+      color: #3D3529;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top bar */
+    .top-bar {
+      background: #F0EDE8;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #E5E0D9;
+      flex-shrink: 0;
+    }
+
+    .top-bar select {
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 10px;
+      border: 1px solid #D5CFC7;
+      border-radius: 6px;
+      background: #FAF8F5;
+      color: #3D3529;
+      cursor: pointer;
+    }
+
+    .top-bar button {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #3D3529;
+      color: #FAF8F5;
+      cursor: pointer;
+    }
+
+    .top-bar button:hover { background: #2A241B; }
+
+    .top-bar button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #8A8780;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #D0171B;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .hidden { display: none; }
+
+    /* Error banner */
+    .error-banner {
+      background: #FDF0F0;
+      color: #9B1C1C;
+      padding: 10px 20px;
+      font-size: 13px;
+      border-bottom: 1px solid #F5D0D0;
+    }
+
+    /* Transcript area */
+    .transcript {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 20px;
+    }
+
+    .transcript-line {
+      font-size: 19px;
+      line-height: 1.6;
+      margin-bottom: 8px;
+      color: #C4B5A5;
+      transition: color 0.3s ease;
+    }
+
+    .transcript-line.active {
+      color: #3D3529;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <select id="mic-select">
+      <option value="">Loading devices…</option>
+    </select>
+    <button id="start-btn">Start</button>
+    <div id="status" class="status hidden">
+      <div class="status-dot"></div>
+      <span>Capturing</span>
+    </div>
+  </div>
+  <div id="error-banner" class="error-banner hidden"></div>
+  <div id="transcript" class="transcript"></div>
+
+  <script>
+    // JS will be added in Task 5
+  </script>
+</body>
 </html>
