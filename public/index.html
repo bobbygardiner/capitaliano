@@ -6,95 +6,183 @@
   <title>Capito</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #FAF8F5;
+      --surface: #F0EDE8;
+      --border: #E5E0D9;
+      --border-strong: #D5CFC7;
+      --text: #3D3529;
+      --text-muted: #C4B5A5;
+      --text-secondary: #8A8780;
+      --accent: #D0171B;
+      --entity-player: #B07D4B;
+      --entity-team: #D0171B;
+      --entity-stadium: #6B8F71;
+      --entity-coach: #7B6B8A;
+      --shadow-sm: 0 1px 3px rgba(61, 53, 41, 0.06);
+      --shadow-md: 0 4px 16px rgba(61, 53, 41, 0.08);
+      --shadow-lg: 0 8px 32px rgba(61, 53, 41, 0.12);
+      --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: 'Sora', -apple-system, 'Helvetica Neue', sans-serif;
-      background: #FAF8F5;
-      color: #3D3529;
+      background: var(--bg);
+      color: var(--text);
       height: 100vh;
       display: flex;
       flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+      animation: appEnter 0.5s var(--ease-out) both;
     }
 
-    /* Top bar */
+    @keyframes appEnter {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* --- Top bar --- */
     .top-bar {
-      background: #F0EDE8;
-      padding: 10px 20px;
+      background: var(--surface);
+      padding: 10px 16px;
       display: flex;
       align-items: center;
-      gap: 12px;
-      border-bottom: 1px solid #E5E0D9;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
       flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .top-bar button, .top-bar .toggle-btn {
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border: none;
+      border-radius: 6px;
+      background: var(--text);
+      color: var(--bg);
+      cursor: pointer;
+      transition: background-color 0.15s ease, transform 0.1s ease;
+      white-space: nowrap;
+    }
+
+    .top-bar button:hover:not(:disabled), .top-bar .toggle-btn:hover {
+      background: #2A241B;
+    }
+
+    .top-bar button:active:not(:disabled), .top-bar .toggle-btn:active {
+      transform: scale(0.97);
+    }
+
+    .top-bar button:disabled { opacity: 0.4; cursor: default; }
+
+    .top-bar button:focus-visible, .top-bar .toggle-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .sessions-btn {
+      background: transparent !important;
+      color: var(--text-secondary) !important;
+      padding: 6px 8px !important;
+      font-size: 16px !important;
+      line-height: 1;
+    }
+
+    .sessions-btn:hover:not(:disabled) {
+      background: var(--border) !important;
+      color: var(--text) !important;
+    }
+
+    .secondary-btn {
+      background: transparent !important;
+      color: var(--text-secondary) !important;
+      border: 1px solid var(--border-strong) !important;
+    }
+
+    .secondary-btn:hover:not(:disabled) {
+      background: var(--surface) !important;
+      color: var(--text) !important;
+    }
+
+    .toggle-btn {
+      border: 1px solid var(--border-strong) !important;
+      background: transparent !important;
+      color: var(--text-secondary) !important;
+    }
+
+    .toggle-btn:hover {
+      background: var(--surface) !important;
+      color: var(--text) !important;
+    }
+
+    .toggle-btn.active {
+      background: var(--text) !important;
+      color: var(--bg) !important;
+      border-color: var(--text) !important;
     }
 
     .top-bar select {
       font-family: inherit;
-      font-size: 13px;
-      padding: 6px 10px;
-      border: 1px solid #D5CFC7;
+      font-size: 12px;
+      padding: 6px 28px 6px 10px;
+      border: 1px solid var(--border-strong);
       border-radius: 6px;
-      background: #FAF8F5;
-      color: #3D3529;
+      background: var(--bg);
+      color: var(--text);
       cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238A8780' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      transition: border-color 0.15s ease;
     }
 
-    .top-bar button {
-      font-family: inherit;
-      font-size: 13px;
+    .top-bar select:focus { border-color: var(--text); outline: none; }
+
+    .session-name {
+      font-size: 12px;
       font-weight: 500;
-      padding: 6px 16px;
-      border: none;
-      border-radius: 6px;
-      background: #3D3529;
-      color: #FAF8F5;
-      cursor: pointer;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
     }
 
-    .top-bar button:hover:not(:disabled) { background: #2A241B; }
-
-    #clear-btn {
-      background: transparent;
-      color: #8A8780;
-      border: 1px solid #D5CFC7;
-    }
-
-    #clear-btn:hover:not(:disabled) {
-      background: #F0EDE8;
-      color: #3D3529;
-    }
-
-    .top-bar button:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
+    .spacer { flex: 1; }
 
     .status {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 12px;
-      color: #8A8780;
+      font-size: 11px;
+      color: var(--text-secondary);
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #D0171B;
-      animation: pulse 1.5s ease-in-out infinite;
+      background: var(--accent);
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
     }
 
-    .hidden { display: none; }
+    .hidden { display: none !important; }
 
-    /* Error banner */
+    /* --- Error banner --- */
     .error-banner {
       background: #FDF0F0;
       color: #9B1C1C;
@@ -103,314 +191,333 @@
       border-bottom: 1px solid #F5D0D0;
     }
 
-    /* Transcript area */
+    /* --- Transcript area --- */
     .transcript {
       flex: 1;
       overflow-y: auto;
-      padding: 24px 20px;
+      padding: 24px 20px 80px;
+      scroll-behavior: smooth;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+      transition: opacity 0.2s ease, transform 0.2s ease;
     }
 
+    .transcript::-webkit-scrollbar { width: 4px; }
+    .transcript::-webkit-scrollbar-track { background: transparent; }
+    .transcript::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+    .transcript::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
     .transcript-line {
-      font-size: 19px;
-      line-height: 1.6;
-      margin-bottom: 8px;
-      color: #C4B5A5;
-      transition: color 0.3s ease;
+      margin-bottom: 14px;
+      opacity: 0.28;
+      font-weight: 300;
+      transition: opacity 0.6s var(--ease-out), font-weight 0.3s ease;
+      will-change: opacity;
     }
 
     .transcript-line.active {
-      color: #3D3529;
+      opacity: 1;
       font-weight: 500;
+      animation: lineEnter 0.4s var(--ease-out) both;
+    }
+
+    .transcript-line.recent-1 { opacity: 0.6; font-weight: 400; }
+    .transcript-line.recent-2 { opacity: 0.4; font-weight: 300; }
+
+    @keyframes lineEnter {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .line-italian {
+      font-size: 19px;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .line-translation {
+      font-size: 14px;
+      line-height: 1.5;
+      font-weight: 400;
+      color: #9A8E7F;
+      font-style: italic;
+      margin-top: 2px;
+      padding-left: 1px;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 0.35s var(--ease-out), opacity 0.3s ease 0.05s;
+    }
+
+    .show-translations .line-translation {
+      max-height: 4em;
+      opacity: 1;
+    }
+
+    /* --- Entity highlighting --- */
+    [data-entity] {
+      text-decoration: underline;
+      text-decoration-style: solid;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+      cursor: default;
+      transition: background-color 0.2s ease;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    [data-entity]:hover {
+      background-color: color-mix(in srgb, var(--entity-color) 12%, transparent);
+    }
+
+    [data-entity="player"] { --entity-color: var(--entity-player); text-decoration-color: var(--entity-player); }
+    [data-entity="team"] { --entity-color: var(--entity-team); text-decoration-color: var(--entity-team); }
+    [data-entity="stadium"] { --entity-color: var(--entity-stadium); text-decoration-color: var(--entity-stadium); }
+    [data-entity="coach"] { --entity-color: var(--entity-coach); text-decoration-color: var(--entity-coach); }
+
+    [data-entity][data-label]::after {
+      content: attr(data-label);
+      font-size: 8px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--bg);
+      background: var(--entity-color);
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin-left: 3px;
+      vertical-align: super;
+      line-height: 1;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    /* --- Idiom highlighting --- */
+    [data-idiom] {
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-decoration-color: var(--text-muted);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
+      cursor: help;
+      position: relative;
+    }
+
+    [data-idiom]::before {
+      content: attr(data-idiom);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      max-width: 280px;
+      white-space: normal;
+      background: var(--text);
+      color: var(--bg);
+      font-size: 12px;
+      font-weight: 400;
+      font-style: normal;
+      line-height: 1.4;
+      padding: 8px 12px;
+      border-radius: 8px;
+      box-shadow: var(--shadow-md);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.2s var(--ease-out), transform 0.2s var(--ease-out), visibility 0.2s;
+      z-index: 50;
+    }
+
+    [data-idiom]::after {
+      content: '';
+      position: absolute;
+      bottom: calc(100% + 2px);
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: var(--text);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s var(--ease-out), visibility 0.2s;
+      z-index: 50;
+    }
+
+    [data-idiom]:hover::before, [data-idiom]:focus::before {
+      opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
+    }
+    [data-idiom]:hover::after, [data-idiom]:focus::after {
+      opacity: 1; visibility: visible;
+    }
+
+    /* --- Sessions panel --- */
+    .sessions-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(61, 53, 41, 0.15);
+      z-index: 99;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s;
+    }
+
+    .sessions-backdrop.open { opacity: 1; visibility: visible; }
+
+    .sessions-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 300px;
+      height: 100vh;
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      z-index: 100;
+      overflow-y: auto;
+      transform: translateX(-100%);
+      transition: transform 0.3s var(--ease-out);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sessions-panel.open { transform: translateX(0); }
+
+    .sessions-header {
+      padding: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sessions-header button {
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .sessions-header button:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .sessions-list { flex: 1; padding: 4px 0; }
+
+    .session-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+      border-left: 3px solid transparent;
+    }
+
+    .session-item:hover { background: var(--surface); }
+
+    .session-item.active {
+      border-left-color: var(--accent);
+      background: var(--surface);
+    }
+
+    .session-item.active .session-label { font-weight: 500; }
+
+    .session-live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      flex-shrink: 0;
+      margin-top: 6px;
+    }
+
+    .session-dot-spacer { width: 6px; flex-shrink: 0; }
+
+    .session-label {
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 400;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* --- Empty state --- */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      color: var(--text-muted);
+      font-size: 14px;
+      gap: 16px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .empty-state-title {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text-secondary);
     }
   </style>
 </head>
 <body>
+  <!-- Sessions panel -->
+  <div id="sessions-backdrop" class="sessions-backdrop"></div>
+  <div id="sessions-panel" class="sessions-panel">
+    <div class="sessions-header">
+      <span>Sessions</span>
+      <button id="new-session-btn">+ New</button>
+    </div>
+    <div id="sessions-list" class="sessions-list"></div>
+  </div>
+
+  <!-- Top bar -->
   <div class="top-bar">
+    <button id="sessions-toggle" class="sessions-btn" title="Sessions">&#9776;</button>
     <select id="mic-select">
       <option value="">Loading devices…</option>
     </select>
-    <button id="start-btn">Start</button>
-    <button id="stop-btn" class="hidden">Stop</button>
-    <button id="clear-btn" class="hidden">Clear</button>
+    <span id="session-name" class="session-name hidden"></span>
+    <div class="spacer"></div>
     <div id="status" class="status hidden">
       <div class="status-dot"></div>
-      <span>Capturing</span>
+      <span>Live</span>
+    </div>
+    <button id="start-btn">Start</button>
+    <button id="stop-btn" class="hidden">Stop</button>
+    <button id="translation-toggle" class="toggle-btn" title="Toggle translations">EN</button>
+  </div>
+
+  <div id="error-banner" class="error-banner hidden"></div>
+  <div id="transcript" class="transcript">
+    <div id="empty-state" class="empty-state">
+      <div class="empty-state-title">Capito</div>
+      <div>Create a session and start capturing Italian audio</div>
     </div>
   </div>
-  <div id="error-banner" class="error-banner hidden"></div>
-  <div id="transcript" class="transcript"></div>
 
-  <script>
-    const micSelect = document.getElementById('mic-select');
-    const startBtn = document.getElementById('start-btn');
-    const stopBtn = document.getElementById('stop-btn');
-    const clearBtn = document.getElementById('clear-btn');
-    const status = document.getElementById('status');
-    const errorBanner = document.getElementById('error-banner');
-    const transcript = document.getElementById('transcript');
-
-    // In-memory transcript data (structured for future persistence)
-    const lines = [];
-
-    let audioContext = null;
-    let source = null;
-    let pcmNode = null;
-    let ws = null;
-    let activeLine = null;
-
-    // --- Device enumeration ---
-
-    async function loadDevices() {
-      try {
-        // Request permission first (needed to get device labels)
-        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        tempStream.getTracks().forEach(t => t.stop());
-
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices.filter(d => d.kind === 'audioinput');
-
-        micSelect.innerHTML = '';
-        for (const device of audioInputs) {
-          const option = document.createElement('option');
-          option.value = device.deviceId;
-          option.textContent = device.label || `Microphone ${micSelect.length + 1}`;
-          micSelect.appendChild(option);
-        }
-      } catch (err) {
-        console.error('[capito] Device enumeration failed:', err);
-        showError('Microphone access denied — check browser permissions');
-      }
-    }
-
-    // --- Error display ---
-
-    function showError(message) {
-      errorBanner.textContent = message;
-      errorBanner.classList.remove('hidden');
-    }
-
-    // --- Transcript rendering ---
-
-    function createNewLine() {
-      // Dim the previous active line
-      if (activeLine) {
-        activeLine.classList.remove('active');
-      }
-
-      activeLine = document.createElement('div');
-      activeLine.className = 'transcript-line active';
-      transcript.appendChild(activeLine);
-
-      lines.push({ text: '', timestamp: Date.now(), final: false });
-    }
-
-    function appendDelta(text) {
-      if (!activeLine) createNewLine();
-      activeLine.textContent += text;
-      lines[lines.length - 1].text += text;
-      transcript.scrollTop = transcript.scrollHeight;
-    }
-
-    function finaliseLine(text) {
-      if (activeLine) {
-        if (text) activeLine.textContent = text;
-        lines[lines.length - 1].text = activeLine.textContent;
-        lines[lines.length - 1].final = true;
-        saveTranscript();
-      }
-      activeLine = null;
-    }
-
-    // --- Persistence (localStorage) ---
-
-    function saveTranscript() {
-      const finalised = lines.filter(l => l.final && l.text);
-      localStorage.setItem('capito-transcript', JSON.stringify(finalised));
-    }
-
-    function restoreTranscript() {
-      try {
-        const saved = JSON.parse(localStorage.getItem('capito-transcript'));
-        if (!saved || !saved.length) return;
-        for (const line of saved) {
-          const div = document.createElement('div');
-          div.className = 'transcript-line';
-          div.textContent = line.text;
-          transcript.appendChild(div);
-          lines.push({ text: line.text, timestamp: line.timestamp, final: true });
-        }
-        transcript.scrollTop = transcript.scrollHeight;
-      } catch {
-        // ignore corrupt data
-      }
-    }
-
-    function clearTranscript() {
-      lines.length = 0;
-      transcript.innerHTML = '';
-      activeLine = null;
-      localStorage.removeItem('capito-transcript');
-    }
-
-    // --- WebSocket message handling ---
-
-    function handleEvent(event) {
-      switch (event.type) {
-        case 'transcription.text.delta':
-          appendDelta(event.text);
-          break;
-
-        case 'transcription.done':
-          finaliseLine(event.text);
-          break;
-
-        case 'transcription.language':
-          console.log('[capito] Detected language:', event.audioLanguage);
-          break;
-
-        case 'error': {
-          const msg = event.error
-            ? typeof event.error.message === 'string'
-              ? event.error.message
-              : JSON.stringify(event.error.message)
-            : event.message || 'Unknown error';
-          showError(msg);
-          break;
-        }
-      }
-    }
-
-    // --- Start transcription ---
-
-    async function start() {
-      startBtn.disabled = true;
-
-      try {
-        // 1. Get mic stream with selected device
-        const constraints = {
-          audio: {
-            deviceId: micSelect.value ? { exact: micSelect.value } : undefined,
-            channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-        // 2. AudioContext at 16kHz (browser auto-resamples)
-        audioContext = new AudioContext({ sampleRate: 16000 });
-        if (audioContext.state === 'suspended') await audioContext.resume();
-
-        // 3. Load AudioWorklet
-        await audioContext.audioWorklet.addModule('/pcm-processor.js');
-
-        // 4. Connect pipeline: mic → worklet
-        source = audioContext.createMediaStreamSource(stream);
-        pcmNode = new AudioWorkletNode(audioContext, 'pcm-processor');
-        source.connect(pcmNode);
-        // Do NOT connect to destination — we don't want playback
-
-        // 5. Open WebSocket
-        const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${wsProtocol}//${location.host}`);
-        ws.binaryType = 'arraybuffer';
-
-        ws.onopen = () => {
-          // 6. Wire AudioWorklet output → WebSocket
-          pcmNode.port.onmessage = (e) => {
-            if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 65536) {
-              ws.send(e.data);
-            }
-          };
-
-          // Update UI
-          startBtn.classList.add('hidden');
-          stopBtn.classList.remove('hidden');
-          status.classList.remove('hidden');
-          micSelect.disabled = true;
-
-          // Create first transcript line
-          createNewLine();
-        };
-
-        ws.onmessage = (e) => {
-          try {
-            handleEvent(JSON.parse(e.data));
-          } catch (err) {
-            console.error('[capito] Failed to parse event:', err);
-          }
-        };
-
-        ws.onclose = (e) => {
-          if (e.code !== 1000) {
-            showError('Connection lost — refresh the page');
-          }
-        };
-
-        ws.onerror = () => {
-          showError('Connection lost — refresh the page');
-        };
-      } catch (err) {
-        // Clean up any partially-acquired resources
-        if (source) { source.mediaStream.getTracks().forEach(t => t.stop()); source = null; }
-        if (audioContext) { audioContext.close(); audioContext = null; }
-        showError(
-          err.name === 'NotAllowedError'
-            ? 'Microphone access denied — check browser permissions'
-            : `Error: ${err.message}`
-        );
-        startBtn.disabled = false;
-      }
-    }
-
-    // --- Stop transcription ---
-
-    function stop() {
-      teardown();
-      stopBtn.classList.add('hidden');
-      startBtn.classList.remove('hidden');
-      startBtn.disabled = false;
-      status.classList.add('hidden');
-      micSelect.disabled = false;
-      // Finalise any in-progress line
-      if (activeLine) {
-        lines[lines.length - 1].final = true;
-        activeLine.classList.remove('active');
-        activeLine = null;
-      }
-      saveTranscript();
-      if (lines.length) clearBtn.classList.remove('hidden');
-    }
-
-    // --- Teardown ---
-
-    function teardown() {
-      if (pcmNode) {
-        pcmNode.port.onmessage = null;
-        pcmNode.disconnect();
-      }
-      if (source) {
-        source.mediaStream.getTracks().forEach(t => t.stop());
-        source.disconnect();
-      }
-      if (audioContext) audioContext.close();
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close(1000, 'Page unload');
-    }
-
-    window.addEventListener('beforeunload', teardown);
-
-    // --- Init ---
-
-    startBtn.addEventListener('click', start);
-    stopBtn.addEventListener('click', stop);
-    clearBtn.addEventListener('click', () => {
-      clearTranscript();
-      clearBtn.classList.add('hidden');
-    });
-    restoreTranscript();
-    if (lines.length) clearBtn.classList.remove('hidden');
-    loadDevices();
-  </script>
+  <script src="/app.js"></script>
 </body>
 </html>
