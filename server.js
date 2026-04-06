@@ -176,6 +176,7 @@ wss.on('connection', async (ws) => {
           ws.send(JSON.stringify({
             type: 'analysis', lineId, text,
             translation: analysis.translation,
+            segments: analysis.segments,
             entities: analysis.entities,
             idioms: analysis.idioms,
           }));

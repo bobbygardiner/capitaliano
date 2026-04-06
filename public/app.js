@@ -150,14 +150,16 @@ function renderSession(session) {
   clearTranscriptDisplay();
   for (const line of session.lines) {
     const el = createLineElement(line.lineId, line.text, line.timestamp);
-    if (line.translation) {
-      addTranslation(el, line.translation);
-    }
-    if (line.entities && line.entities.length) {
-      applyEntityHighlighting(el, line.text, line.entities);
-    }
-    if (line.idioms && line.idioms.length) {
-      applyIdiomHighlighting(el, line.text, line.idioms);
+    if (line.segments && line.segments.length) {
+      applySegments(el, line.segments, line.entities, line.idioms);
+    } else {
+      if (line.translation) addTranslation(el, line.translation);
+      if (line.entities && line.entities.length) {
+        applyEntityHighlighting(el, line.text, line.entities);
+      }
+      if (line.idioms && line.idioms.length) {
+        applyIdiomHighlighting(el, line.text, line.idioms);
+      }
     }
   }
   updateLineClasses();
@@ -243,6 +245,69 @@ function createLineElement(lineId, text, timestamp) {
   transcript.appendChild(el);
   if (lineId !== undefined) lineElements.set(lineId, el);
   return el;
+}
+
+function applySegments(lineEl, segments, entities, idioms) {
+  // Replace the line-header + line-translation with segmented pairs
+  const header = lineEl.querySelector('.line-header');
+  const ts = header ? header.querySelector('.line-timestamp') : null;
+  const tsText = ts ? ts.textContent : '';
+
+  // Clear existing content
+  lineEl.innerHTML = '';
+
+  // Re-add timestamp as a standalone element
+  if (tsText) {
+    const tsEl = document.createElement('div');
+    tsEl.className = 'line-timestamp';
+    tsEl.textContent = tsText;
+    tsEl.style.marginBottom = '4px';
+    lineEl.appendChild(tsEl);
+  }
+
+  const container = document.createElement('div');
+  container.className = 'line-segments';
+
+  for (const seg of segments) {
+    const pair = document.createElement('div');
+    pair.className = 'segment-pair';
+
+    const itEl = document.createElement('div');
+    itEl.className = 'segment-italian';
+
+    // Apply entity highlighting to this segment's Italian text
+    let itHtml = escapeHtml(seg.it);
+    if (entities && entities.length) {
+      const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
+      for (const ent of sorted) {
+        const escaped = escapeHtml(ent.text);
+        if (itHtml.includes(escaped)) {
+          itHtml = itHtml.replaceAll(escaped, `<span data-entity="${escapeAttr(ent.type)}">${escaped}</span>`);
+        }
+      }
+    }
+    // Apply idiom highlighting
+    if (idioms && idioms.length) {
+      for (const idiom of idioms) {
+        const expr = escapeHtml(idiom.expression);
+        const meaning = escapeAttr(idiom.meaning);
+        if (itHtml.includes(expr)) {
+          itHtml = itHtml.replace(expr, `<span data-idiom="${meaning}" tabindex="0">${expr}</span>`);
+        }
+      }
+    }
+    itEl.innerHTML = itHtml;
+    pair.appendChild(itEl);
+
+    const enEl = document.createElement('div');
+    enEl.className = 'segment-translation';
+    enEl.textContent = seg.en || '';
+    pair.appendChild(enEl);
+
+    container.appendChild(pair);
+  }
+
+  lineEl.appendChild(container);
 }
 
 function updateLineClasses() {
@@ -333,12 +398,19 @@ function handleEvent(event) {
     case 'analysis': {
       const el = lineElements.get(event.lineId);
       if (!el) break;
-      if (event.translation) addTranslation(el, event.translation);
-      if (event.entities && event.entities.length) {
-        applyEntityHighlighting(el, event.text || el.querySelector('.line-italian').textContent, event.entities);
-      }
-      if (event.idioms && event.idioms.length) {
-        applyIdiomHighlighting(el, el.querySelector('.line-italian').textContent, event.idioms);
+
+      if (event.segments && event.segments.length) {
+        // Segmented display: interleaved IT/EN pairs
+        applySegments(el, event.segments, event.entities, event.idioms);
+      } else {
+        // Fallback: monolithic display
+        if (event.translation) addTranslation(el, event.translation);
+        if (event.entities && event.entities.length) {
+          applyEntityHighlighting(el, event.text || el.querySelector('.line-italian').textContent, event.entities);
+        }
+        if (event.idioms && event.idioms.length) {
+          applyIdiomHighlighting(el, el.querySelector('.line-italian').textContent, event.idioms);
+        }
       }
       // Update in-memory session for vocab panel
       if (currentSession && currentSession.lines) {
