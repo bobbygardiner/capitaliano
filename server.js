@@ -91,7 +91,8 @@ const server = createServer(async (req, res) => {
   }
 
   // Static files
-  const filePath = resolve(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
+  const safePath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\//, '');
+  const filePath = resolve(PUBLIC_DIR, safePath);
   if (!filePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403);
     res.end('Forbidden');
