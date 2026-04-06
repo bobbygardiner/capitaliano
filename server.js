@@ -223,10 +223,12 @@ wss.on('connection', async (ws) => {
   }
 
   // Only connect to Mistral when binary audio arrives
+  let mistralConnecting = false;
   ws.on('message', (data, isBinary) => {
     if (!isBinary) return;
-    if (!connection && !mistralReady) {
-      startMistral(); // fire-and-forget, buffers audio until ready
+    if (!connection && !mistralReady && !mistralConnecting) {
+      mistralConnecting = true;
+      startMistral();
     }
     if (mistralReady && connection && !connection.isClosed) {
       connection.sendAudio(data);
