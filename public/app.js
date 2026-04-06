@@ -223,20 +223,15 @@ function createLineElement(lineId, text, timestamp) {
   el.className = 'transcript-line';
   el.dataset.lineId = lineId;
 
-  const header = document.createElement('div');
-  header.className = 'line-header';
-
-  const ts = document.createElement('span');
+  const ts = document.createElement('div');
   ts.className = 'line-timestamp';
   ts.textContent = formatElapsed(timestamp);
-  header.appendChild(ts);
+  el.appendChild(ts);
 
   const italian = document.createElement('div');
   italian.className = 'line-italian';
   italian.textContent = text || '';
-  header.appendChild(italian);
-
-  el.appendChild(header);
+  el.appendChild(italian);
 
   const translation = document.createElement('div');
   translation.className = 'line-translation';
@@ -248,20 +243,16 @@ function createLineElement(lineId, text, timestamp) {
 }
 
 function applySegments(lineEl, segments, entities, idioms) {
-  // Replace the line-header + line-translation with segmented pairs
-  const header = lineEl.querySelector('.line-header');
-  const ts = header ? header.querySelector('.line-timestamp') : null;
+  // Preserve timestamp, replace Italian + translation with segmented pairs
+  const ts = lineEl.querySelector('.line-timestamp');
   const tsText = ts ? ts.textContent : '';
 
-  // Clear existing content
   lineEl.innerHTML = '';
 
-  // Re-add timestamp as a standalone element
   if (tsText) {
     const tsEl = document.createElement('div');
     tsEl.className = 'line-timestamp';
     tsEl.textContent = tsText;
-    tsEl.style.marginBottom = '4px';
     lineEl.appendChild(tsEl);
   }
 
