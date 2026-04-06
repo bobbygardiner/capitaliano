@@ -1,59 +1,72 @@
 # CLAUDE.md — Capito
 
 ## What this project is
-A personal live transcription tool for Italian TV audio. A Node.js backend
-proxies mic audio from the browser to the Voxtral Realtime API. The frontend
-displays a rolling Italian transcript in real time.
+A personal live transcription and translation tool for Italian TV audio. A Node.js
+backend proxies mic audio to the Voxtral Realtime API and post-processes each
+utterance with translation and entity extraction via Claude Code CLI. The frontend
+displays a rolling karaoke-style Italian transcript with optional English translations
+and highlighted entities/idioms.
 
-## Current phase: MVP
-Transcription only. No translation yet. Goal: watch a football match and read
-a rolling Italian transcript on a second screen.
+## Current phase: Phase 2
+Live transcription with sessions, post-processed translations, entity/idiom
+highlighting, and polished karaoke-style UI.
 
 ## Stack
-- **Backend**: Node.js (minimal — just enough to proxy audio to Mistral)
-- **Frontend**: Single `index.html`, vanilla JS, no framework, no build step
+- **Backend**: Node.js — audio proxy, session storage, REST API, translation pipeline
+- **Frontend**: `index.html` (HTML+CSS) + `app.js` (vanilla JS), no framework, no build step
 - **STT**: Mistral Voxtral Realtime API (`voxtral-mini-transcribe-realtime-2602`)
+- **Translation**: Claude Code CLI (`claude -p`) for translation + entity extraction
 - **Audio**: Browser `getUserMedia` → PCM16 @ 16kHz → WebSocket to Node → Mistral SDK
-- **No Anthropic API in MVP** — translation is step 2
 
 ## Project structure
 
 ```
 capito/
-├── server.js              # HTTP + WebSocket server, Mistral SDK proxy
+├── server.js              # HTTP + WebSocket server, REST API, Mistral proxy
+├── lib/
+│   ├── sessions.js        # Session CRUD, JSON file I/O, flush timer
+│   └── translate.js       # Translation via claude -p CLI
 ├── public/
-│   ├── index.html         # Single-page app (HTML, CSS, JS inline)
+│   ├── index.html         # HTML structure + all CSS (inline)
+│   ├── app.js             # Application JavaScript
 │   └── pcm-processor.js   # AudioWorklet for PCM16 conversion
-├── package.json           # Three deps: ws, dotenv, @mistralai/mistralai
+├── sessions/              # Session JSON files (gitignored)
+│   └── index.json         # Session manifest
+├── docs/
+│   ├── italian-football-commentary-vocabulary.md
+│   └── superpowers/
+│       ├── specs/          # Design specs
+│       └── plans/          # Implementation plans
+├── package.json
 ├── .env                   # MISTRAL_API_KEY (gitignored)
-├── .env.example           # Template for .env
-├── context.md             # Project context and roadmap
-├── CLAUDE.md              # This file
-└── docs/
-    └── superpowers/
-        ├── specs/          # Design specs
-        └── plans/          # Implementation plans
+├── .env.example
+├── context.md
+└── CLAUDE.md              # This file
 ```
 
 ## Key technical details
-- Audio format Voxtral expects: PCM16, 16kHz, mono, little-endian
-- Browser captures via `getUserMedia`, converts Float32 → Int16 via Web Audio API
-- Backend opens WebSocket to Mistral, forwards audio chunks, streams back deltas
-- Event types from Mistral: `transcription.text.delta`, `transcription.done`, error
-- Transcript display: append deltas in real time, new line on `transcription.done`
+- Audio: PCM16, 16kHz, mono, little-endian via AudioWorklet
+- Server intercepts `transcription.done` events to save lines and trigger translation
+- Translation is fire-and-forget async: `claude -p` returns JSON with translation, entities, idioms
+- Sessions stored as JSON files in sessions/ with 5-second flush timer
+- WebSocket protocol: `transcription.text.delta`, `transcription.done` (with lineId), `analysis`, `error`
+- Entity types: player, team, stadium, coach — each with colored underlines
+- Idioms shown with dotted underlines and CSS hover tooltips
+
+## API endpoints
+- `GET /api/sessions` — list all sessions
+- `POST /api/sessions` — create new session
+- `GET /api/sessions/:id` — get full session
+- `POST /api/sessions/:id/end` — end active session
 
 ## Principles
 - Keep it simple — this is a personal tool, not a product
 - No unnecessary dependencies
-- Don't add translation, UI polish, or step 2 features until MVP is working
 - Prefer readable code over clever code
-
-## What success looks like for MVP
-Run `node server.js`, open `localhost:3000`, click start, point mic at TV,
-see Italian commentary appear on screen within ~1 second of it being spoken.
+- UI should feel smooth and premium without being overcomplicated
 
 ## Next steps (do not build yet)
-- Translation via Anthropic API (Claude Sonnet) on each `transcription.done` event
-- Context biasing with squad names
+- Context biasing with squad names (Phase 3)
 - "Flag this moment" button with half-time review
 - PWA / iPad support
+- Anki deck export from vocabulary/idioms

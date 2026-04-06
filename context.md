@@ -2,12 +2,12 @@
 
 ## What this is
 A personal tool for live transcription and translation of Italian TV audio
-(primarily football commentary) while watching on a 77" TV. The goal is to
-glance at a second screen (laptop) and understand what was just said in Italian.
+(primarily football commentary). The goal is to
+glance at a second screen and understand what was just said in Italian.
 
 ## How it came about
 Validated through manual testing in Mistral AI Studio:
-- iPhone (spare) used as mic via macOS Continuity Camera, placed near TV speaker
+- iPhone used as mic via macOS Continuity Camera, placed near TV speaker
 - Voxtral handled Italian football commentary well at close range
 - Player names are the main weak point — addressable via context biasing in later steps
 
