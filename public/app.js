@@ -737,4 +737,4 @@ startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);
 loadDevices();
 initActiveSession();
-connectViewer();
+connectPersistentWs();
