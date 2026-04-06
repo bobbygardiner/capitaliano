@@ -180,6 +180,7 @@ wss.on('connection', async (ws) => {
             segments: analysis.segments,
             entities: analysis.entities,
             idioms: analysis.idioms,
+            costUsd: analysis.costUsd,
           }));
         }
       });

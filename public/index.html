@@ -167,6 +167,13 @@
       color: var(--text-secondary);
     }
 
+    .cost-indicator {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
     .status-dot {
       width: 7px;
       height: 7px;
@@ -691,6 +698,7 @@
     </div>
     <button id="start-btn">Start</button>
     <button id="stop-btn" class="hidden">Stop</button>
+    <span id="cost-indicator" class="cost-indicator hidden"></span>
     <button id="translation-toggle" class="toggle-btn" title="Toggle translations">EN</button>
   </div>
 

@@ -16,6 +16,7 @@ const emptyState = document.getElementById('empty-state');
 const tabBar = document.getElementById('tab-bar');
 const vocabList = document.getElementById('vocab-list');
 const vocabPanel = document.getElementById('vocab-panel');
+const costIndicator = document.getElementById('cost-indicator');
 
 // --- State ---
 let currentSession = null;
@@ -26,6 +27,7 @@ let ws = null;
 let activeLineEl = null;
 let waitingEl = null;
 let lineElements = new Map(); // lineId -> DOM element
+let sessionCostUsd = 0;
 
 // --- Sessions panel ---
 
@@ -166,6 +168,8 @@ function renderSession(session) {
   scrollToBottom();
   tabBar.classList.remove('hidden');
   renderVocab();
+  sessionCostUsd = calculateSessionCost(session);
+  updateCostDisplay();
 }
 
 // --- Device enumeration ---
@@ -403,6 +407,11 @@ function handleEvent(event) {
           applyIdiomHighlighting(el, el.querySelector('.line-italian').textContent, event.idioms);
         }
       }
+      // Track cost
+      if (event.costUsd) {
+        sessionCostUsd += event.costUsd;
+        updateCostDisplay();
+      }
       // Update in-memory session for vocab panel
       if (currentSession && currentSession.lines) {
         const line = currentSession.lines.find(l => l.lineId === event.lineId);
@@ -624,6 +633,19 @@ function renderVocab() {
 }
 
 // --- Utilities ---
+
+// --- Cost display ---
+
+function updateCostDisplay() {
+  if (sessionCostUsd > 0) {
+    costIndicator.textContent = `$${sessionCostUsd.toFixed(4)}`;
+    costIndicator.classList.remove('hidden');
+  }
+}
+
+function calculateSessionCost(session) {
+  return (session.lines || []).reduce((sum, l) => sum + (l.costUsd || 0), 0);
+}
 
 const _escDiv = document.createElement('div');
 function escapeHtml(str) {
