@@ -385,6 +385,21 @@ function handleEvent(event) {
         lineElements.set(event.lineId, activeLineEl);
         activeLineEl.querySelector('.line-italian').textContent = event.text;
       }
+      // Keep client-side session in sync for vocab panel
+      if (currentSession && event.lineId !== undefined) {
+        if (!currentSession.lines) currentSession.lines = [];
+        currentSession.lines.push({
+          lineId: event.lineId,
+          text: event.text,
+          timestamp: new Date().toISOString(),
+          final: true,
+          translation: null,
+          segments: [],
+          entities: [],
+          idioms: [],
+          costUsd: 0,
+        });
+      }
       activeLineEl = null;
       updateLineClasses();
       break;

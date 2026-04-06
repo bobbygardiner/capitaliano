@@ -160,7 +160,9 @@ wss.on('connection', async (ws) => {
 
   // Sentence accumulator — Mistral doesn't send transcription.done at utterance
   // boundaries, only at stream end. We detect sentence breaks ourselves.
+  // Require at least 40 chars to avoid splitting on abbreviations, scores, or names.
   let sentenceBuffer = '';
+  const MIN_SENTENCE_LENGTH = 40;
   const SENTENCE_END = /[.!?]\s*$/;
 
   function finalizeSentence(raw) {
@@ -196,7 +198,7 @@ wss.on('connection', async (ws) => {
         if (event.type === 'transcription.text.delta') {
           ws.send(JSON.stringify(event));
           sentenceBuffer += event.text;
-          if (SENTENCE_END.test(sentenceBuffer)) {
+          if (sentenceBuffer.length >= MIN_SENTENCE_LENGTH && SENTENCE_END.test(sentenceBuffer)) {
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
           }
