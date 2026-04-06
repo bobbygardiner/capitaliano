@@ -13,6 +13,9 @@ const statusEl = document.getElementById('status');
 const errorBanner = document.getElementById('error-banner');
 const transcript = document.getElementById('transcript');
 const emptyState = document.getElementById('empty-state');
+const tabBar = document.getElementById('tab-bar');
+const vocabList = document.getElementById('vocab-list');
+const vocabPanel = document.getElementById('vocab-panel');
 
 // --- State ---
 let currentSession = null;
@@ -159,6 +162,8 @@ function renderSession(session) {
   }
   updateLineClasses();
   scrollToBottom();
+  tabBar.classList.remove('hidden');
+  renderVocab();
 }
 
 // --- Device enumeration ---
@@ -335,6 +340,16 @@ function handleEvent(event) {
       if (event.idioms && event.idioms.length) {
         applyIdiomHighlighting(el, el.querySelector('.line-italian').textContent, event.idioms, event.entities || []);
       }
+      // Update in-memory session for vocab panel
+      if (currentSession && currentSession.lines) {
+        const line = currentSession.lines.find(l => l.lineId === event.lineId);
+        if (line) {
+          if (event.translation) line.translation = event.translation;
+          if (event.entities) line.entities = event.entities;
+          if (event.idioms) line.idioms = event.idioms;
+        }
+        renderVocab();
+      }
       break;
     }
 
@@ -487,6 +502,61 @@ translationToggle.addEventListener('click', () => {
   document.body.classList.toggle('show-translations');
   translationToggle.classList.toggle('active');
 });
+
+// --- Tab switching ---
+
+tabBar.addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  const tab = btn.dataset.tab;
+
+  tabBar.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById(tab === 'vocab' ? 'vocab-panel' : 'transcript').classList.add('active');
+});
+
+// --- Vocab panel ---
+
+// Collect idioms from all lines in the current session view
+function collectVocab() {
+  if (!currentSession) return [];
+  const vocab = [];
+  for (const line of currentSession.lines) {
+    if (!line.idioms || !line.idioms.length) continue;
+    for (const idiom of line.idioms) {
+      vocab.push({
+        expression: idiom.expression,
+        meaning: idiom.meaning,
+        context: line.text,
+        timestamp: line.timestamp,
+      });
+    }
+  }
+  return vocab;
+}
+
+function renderVocab() {
+  const vocab = collectVocab();
+  if (!vocab.length) {
+    vocabList.innerHTML = '<div class="vocab-empty">No vocabulary collected yet</div>';
+    return;
+  }
+
+  vocabList.innerHTML = '';
+  for (const item of vocab) {
+    const el = document.createElement('div');
+    el.className = 'vocab-item';
+    el.innerHTML = `
+      <div class="vocab-expression">${escapeHtml(item.expression)}</div>
+      <div class="vocab-meaning">${escapeHtml(item.meaning)}</div>
+      <div class="vocab-context">"…${escapeHtml(item.context.slice(0, 120))}${item.context.length > 120 ? '…' : ''}"</div>
+      <div class="vocab-time">${formatElapsed(item.timestamp)}</div>
+    `;
+    vocabList.appendChild(el);
+  }
+}
 
 // --- Utilities ---
 
