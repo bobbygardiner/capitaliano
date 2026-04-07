@@ -920,9 +920,95 @@ saveContextBtn.addEventListener('click', async () => {
 
 // --- Audio playback ---
 
-function playLineAudio(lineId) {
-  console.log('[capito] playLineAudio:', lineId);
-  // Implemented in next task
+let audioEl = null;
+let playingLineId = null;
+let currentBlobUrl = null;
+
+function getAudioElement() {
+  if (!audioEl) {
+    audioEl = document.createElement('audio');
+    audioEl.addEventListener('ended', stopAudioPlayback);
+    audioEl.addEventListener('error', stopAudioPlayback);
+  }
+  return audioEl;
+}
+
+function stopAudioPlayback() {
+  const audio = getAudioElement();
+  audio.pause();
+  audio.removeAttribute('src');
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
+  }
+  // Reset play button icon
+  if (playingLineId !== null) {
+    const el = lineElements.get(playingLineId);
+    if (el) {
+      const btn = el.querySelector('.line-play-btn');
+      if (btn) {
+        btn.textContent = '\u25B6';
+        btn.classList.remove('playing');
+      }
+    }
+    playingLineId = null;
+  }
+}
+
+async function playLineAudio(lineId) {
+  // If already playing this line, stop
+  if (playingLineId === lineId) {
+    stopAudioPlayback();
+    return;
+  }
+
+  // Stop any current playback
+  stopAudioPlayback();
+
+  if (!currentSession) return;
+
+  // Compute from/to offsets
+  const lines = currentSession.lines;
+  const lineIndex = lines.findIndex(l => l.lineId === lineId);
+  if (lineIndex === -1) return;
+
+  const line = lines[lineIndex];
+  const prevLine = lineIndex > 0 ? lines[lineIndex - 1] : null;
+  const from = prevLine?.audioOffsetSec ?? 0;
+  const to = line.audioOffsetSec;
+
+  if (to === null || to === undefined) return;
+
+  // Build URL
+  let url = `/api/sessions/${currentSession.id}/audio?from=${from}`;
+  if (to !== null && to !== undefined) url += `&to=${to}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return;
+
+    const blob = await res.blob();
+    currentBlobUrl = URL.createObjectURL(blob);
+
+    const audio = getAudioElement();
+    audio.src = currentBlobUrl;
+    playingLineId = lineId;
+
+    // Update button to stop icon
+    const el = lineElements.get(lineId);
+    if (el) {
+      const btn = el.querySelector('.line-play-btn');
+      if (btn) {
+        btn.textContent = '\u25A0';
+        btn.classList.add('playing');
+      }
+    }
+
+    await audio.play();
+  } catch (err) {
+    console.error('[capito] Audio playback error:', err);
+    stopAudioPlayback();
+  }
 }
 
 // --- Init ---
