@@ -125,10 +125,19 @@ function broadcast(data) {
   const msg = typeof data === 'string' ? data : JSON.stringify(data);
   for (const client of wss.clients) {
     if (client.readyState === client.OPEN) {
-      client.send(msg);
+      try { client.send(msg); } catch {}
     }
   }
 }
+
+// Prevent EPIPE / unhandled rejection crashes
+process.on('unhandledRejection', (err) => {
+  if (err?.code === 'EPIPE' || err?.code === 'ERR_STREAM_DESTROYED') {
+    console.error('[capito] Suppressed write error:', err.code);
+    return;
+  }
+  console.error('[capito] Unhandled rejection:', err);
+});
 
 wss.on('connection', async (ws) => {
   console.log('[capito] Client connected');
@@ -255,7 +264,7 @@ wss.on('connection', async (ws) => {
       startMistral();
     }
     if (mistralReady && connection && !connection.isClosed) {
-      connection.sendAudio(data);
+      try { connection.sendAudio(data); } catch {}
     }
   });
 
