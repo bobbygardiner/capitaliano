@@ -78,8 +78,9 @@ describe('BatchPipeline', () => {
       transcribeFn: async (wavBuffer, contextBias) => {
         return { text: `transcribed:${wavBuffer.length}bytes` };
       },
-      analyzeFn: async (text, ctx) => ({
-        translation: `translated:${text}`,
+      mergeFn: async (realtimeText, batchText, ctx) => ({
+        text: `merged:${batchText}`,
+        translation: `translated:${batchText}`,
         segments: [],
         entities: [],
         idioms: [],
@@ -94,7 +95,7 @@ describe('BatchPipeline', () => {
       pipeline.pushChunk(Buffer.alloc(chunkSize));
     }
 
-    pipeline.markSentence(0);
+    pipeline.markSentence(0, 'original text');
     await pipeline.flush();
 
     assert.equal(upgrades.length, 1);
@@ -108,8 +109,8 @@ describe('BatchPipeline', () => {
       contextBias: [],
       onUpgrade: (lineId, result) => upgrades.push({ lineId, result }),
       transcribeFn: async (wavBuffer) => ({ text: 'coalesced text' }),
-      analyzeFn: async (text) => ({
-        translation: text, segments: [], entities: [], idioms: [], costUsd: 0.001,
+      mergeFn: async (realtimeText, batchText) => ({
+        text: batchText, translation: batchText, segments: [], entities: [], idioms: [], costUsd: 0.001,
       }),
       splitAnalyzeFn: async (batchText, originals, ctx) => {
         return originals.map((_, i) => ({

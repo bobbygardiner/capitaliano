@@ -9,7 +9,7 @@ import {
 } from '@mistralai/mistralai/extra/realtime';
 import * as sessions from './lib/sessions.js';
 import { createBatchPipeline, parseContextBias, transcribeBatch } from './lib/batch.js';
-import { analyzeCommentary, splitAndAnalyze } from './lib/translate.js';
+import { analyzeCommentary, splitAndAnalyze, mergeAndAnalyze } from './lib/translate.js';
 
 config();
 
@@ -193,10 +193,10 @@ wss.on('connection', async (ws) => {
       broadcast({ type: 'analysis.upgrade', lineId, ...result });
     },
     transcribeFn: (wavBuffer) => transcribeBatch(wavBuffer, getContextBias()),
-    analyzeFn: (text, _ctx) => analyzeCommentary(text, sessions.getActive()?.context),
+    mergeFn: (realtimeText, batchText, _ctx) =>
+      mergeAndAnalyze(realtimeText, batchText, sessions.getActive()?.context),
     splitAnalyzeFn: (batchText, originals, _ctx) =>
       splitAndAnalyze(batchText, originals, sessions.getActive()?.context),
-    getBiasTokens: getContextBias,
   });
 
   // Sentence accumulator
