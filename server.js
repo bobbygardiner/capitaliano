@@ -166,11 +166,12 @@ wss.on('connection', async (ws) => {
   let connection = null;
   let mistralReady = false;
 
-  // Batch pipeline for phase 2 transcription.
-  // contextBias is computed lazily via transcribeFn so it picks up the
-  // current session's context even if the session was created after WS connect.
+  // Phase 2 batch transcription — disabled by default.
+  // Set CAPITO_PHASE2=1 env var to enable.
+  const phase2Enabled = process.env.CAPITO_PHASE2 === '1';
+
   let cachedBias = null;
-  let cachedBiasContext = undefined; // sentinel: undefined = never computed
+  let cachedBiasContext = undefined;
   function getContextBias() {
     const ctx = sessions.getActive()?.context;
     if (ctx !== cachedBiasContext) {
@@ -180,7 +181,7 @@ wss.on('connection', async (ws) => {
     return cachedBias;
   }
 
-  const pipeline = createBatchPipeline({
+  const pipeline = phase2Enabled ? createBatchPipeline({
     contextBias: [], // not used directly — transcribeFn reads live bias
     onUpgrade: (lineId, result) => {
       // Store phase 1 data before overwriting
@@ -197,7 +198,7 @@ wss.on('connection', async (ws) => {
       mergeAndAnalyze(realtimeText, batchText, sessions.getActive()?.context),
     splitAnalyzeFn: (batchText, originals, _ctx) =>
       splitAndAnalyze(batchText, originals, sessions.getActive()?.context),
-  });
+  }) : null;
 
   // Sentence accumulator
   let sentenceBuffer = '';
@@ -237,7 +238,7 @@ wss.on('connection', async (ws) => {
           broadcast({ type: 'analysis', lineId, text, ...analysis });
         }
       });
-      pipeline.markSentence(lineId, text);  // <-- add this line
+      if (pipeline) pipeline.markSentence(lineId, text);
     }
   }
 
@@ -307,7 +308,7 @@ wss.on('connection', async (ws) => {
   ws.on('message', (data, isBinary) => {
     if (!isBinary) return;
     audioCount++;
-    pipeline.pushChunk(data);  // <-- unconditional, before Mistral guard
+    if (pipeline) pipeline.pushChunk(data);
     if (!connection && !mistralReady && !mistralConnecting) {
       mistralConnecting = true;
       console.log('[capito] First audio chunk received, connecting to Mistral...');
@@ -324,7 +325,7 @@ wss.on('connection', async (ws) => {
     console.log(`[capito] Client disconnected after ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences`);
     clearInterval(statusTimer);
     sentenceBuffer = '';
-    await pipeline.flush();
+    if (pipeline) await pipeline.flush();
     if (connection && !connection.isClosed) {
       try { await connection.endAudio(); await connection.close(); } catch {}
     }
