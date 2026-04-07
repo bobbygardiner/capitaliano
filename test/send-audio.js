@@ -11,6 +11,7 @@
 
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 
 const audioFile = process.argv[2];
@@ -22,6 +23,14 @@ if (!audioFile) {
   process.exit(1);
 }
 
+// Parse --context flag
+let contextText = null;
+const contextIdx = process.argv.indexOf('--context');
+if (contextIdx !== -1 && process.argv[contextIdx + 1]) {
+  contextText = await readFile(resolve(process.argv[contextIdx + 1]), 'utf-8');
+  console.log(`[test] Context loaded: ${contextText.split('\n').length} lines`);
+}
+
 const CHUNK_SIZE = 4096 * 2; // 4096 samples * 2 bytes per sample = 8192 bytes
 const CHUNK_INTERVAL_MS = 256; // 256ms per chunk at 16kHz
 
@@ -31,7 +40,10 @@ async function createSession() {
   const res = await fetch(`${serverBase}/api/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: `Test: ${audioFile.split('/').pop()}` }),
+    body: JSON.stringify({
+      name: `Test: ${audioFile.split('/').pop()}`,
+      ...(contextText && { context: contextText }),
+    }),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -92,6 +104,8 @@ ffmpeg.on('close', (code) => {
   let doneCount = 0;
   let analysisCount = 0;
   const pendingTranslations = new Map(); // lineId -> timestamp when done was received
+  const doneTimestamps = new Map(); // lineId -> timestamp, never cleared
+  let upgradeCount = 0;
 
   ws.on('open', () => {
     console.log(`[test] Connected. Streaming audio...\n`);
@@ -108,6 +122,7 @@ ffmpeg.on('close', (code) => {
           console.log(`Events: ${eventCount} total`);
           console.log(`Lines finalized: ${doneCount}`);
           console.log(`Translations received: ${analysisCount}`);
+          console.log(`Upgrades received: ${upgradeCount}`);
           console.log(`Translations pending: ${doneCount - analysisCount}`);
           if (pendingTranslations.size) {
             console.log(`Still waiting for lineIds: ${[...pendingTranslations.keys()].join(', ')}`);
@@ -148,6 +163,7 @@ ffmpeg.on('close', (code) => {
         case 'transcription.done':
           doneCount++;
           pendingTranslations.set(event.lineId, Date.now());
+          doneTimestamps.set(event.lineId, Date.now());
           console.log(`\n[${doneCount}] IT: "${event.text}"`);
           break;
 
@@ -160,6 +176,17 @@ ffmpeg.on('close', (code) => {
           if (event.segments?.length) console.log(`    Segments: ${event.segments.length}`);
           if (event.entities?.length) console.log(`    Entities: ${event.entities.map(e => `${e.text}(${e.type})`).join(', ')}`);
           if (event.idioms?.length) console.log(`    Idioms: ${event.idioms.map(i => `"${i.expression}"`).join(', ')}`);
+          break;
+        }
+
+        case 'analysis.upgrade': {
+          upgradeCount++;
+          const sentAt = doneTimestamps.get(event.lineId);
+          const latency = sentAt ? ((Date.now() - sentAt) / 1000).toFixed(1) : '?';
+          console.log(`    UPGRADE EN: "${event.translation}" [${latency}s from done]`);
+          if (event.text) console.log(`    UPGRADE IT: "${event.text}"`);
+          if (event.segments?.length) console.log(`    Segments: ${event.segments.length}`);
+          if (event.entities?.length) console.log(`    Entities: ${event.entities.map(e => `${e.text}(${e.type})`).join(', ')}`);
           break;
         }
 
