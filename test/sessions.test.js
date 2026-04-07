@@ -6,18 +6,33 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import * as sessions from '../lib/sessions.js';
 
+// Track session IDs created during tests so we can clean them up
+const createdSessionIds = [];
+
+async function createTestSession(name) {
+  const session = await sessions.create(name);
+  createdSessionIds.push(session.id);
+  return session;
+}
+
+async function cleanupTestSessions() {
+  try { await sessions.end(); } catch {}
+  for (const id of createdSessionIds) {
+    try { await sessions.remove(id); } catch {}
+  }
+  createdSessionIds.length = 0;
+}
+
 describe('addLine with audioOffsetSec', () => {
   before(async () => {
     await sessions.init();
     try { await sessions.end(); } catch {}
   });
 
-  after(async () => {
-    try { await sessions.end(); } catch {}
-  });
+  after(cleanupTestSessions);
 
   it('stores audioOffsetSec on the line object', async () => {
-    await sessions.create('Test audio offset');
+    await createTestSession('Test audio offset');
     const lineId = sessions.addLine('test text', 42.5);
     const active = sessions.getActive();
     assert.equal(active.lines[lineId].audioOffsetSec, 42.5);
@@ -25,7 +40,7 @@ describe('addLine with audioOffsetSec', () => {
   });
 
   it('defaults audioOffsetSec to null when not provided', async () => {
-    await sessions.create('Test audio offset default');
+    await createTestSession('Test audio offset default');
     const lineId = sessions.addLine('test text');
     const active = sessions.getActive();
     assert.equal(active.lines[lineId].audioOffsetSec, null);
@@ -39,12 +54,10 @@ describe('setAudioStartedAt', () => {
     try { await sessions.end(); } catch {}
   });
 
-  after(async () => {
-    try { await sessions.end(); } catch {}
-  });
+  after(cleanupTestSessions);
 
   it('stores audioStartedAt on the active session', async () => {
-    await sessions.create('Test audio start');
+    await createTestSession('Test audio start');
     const ts = new Date().toISOString();
     sessions.setAudioStartedAt(ts);
     const active = sessions.getActive();
@@ -64,8 +77,10 @@ describe('remove deletes pcm file', () => {
     try { await sessions.end(); } catch {}
   });
 
+  // No after needed — remove() is the test itself
+
   it('deletes .pcm file when removing a session', async () => {
-    const session = await sessions.create('Test PCM cleanup');
+    const session = await createTestSession('Test PCM cleanup');
     const id = session.id;
     await sessions.end();
 
@@ -76,24 +91,22 @@ describe('remove deletes pcm file', () => {
 
     await sessions.remove(id);
     assert.equal(existsSync(pcmPath), false);
+    // Remove from tracking since it's already deleted
+    const idx = createdSessionIds.indexOf(id);
+    if (idx !== -1) createdSessionIds.splice(idx, 1);
   });
 });
 
 describe('updateLine with text field', () => {
-  let testSessionId = null;
-
   before(async () => {
     await sessions.init();
     try { await sessions.end(); } catch {}
   });
 
-  after(async () => {
-    try { await sessions.end(); } catch {}
-  });
+  after(cleanupTestSessions);
 
   it('updates line text when text field is provided', async () => {
-    const session = await sessions.create('Test updateLine text');
-    testSessionId = session.id;
+    await createTestSession('Test updateLine text');
     const lineId = sessions.addLine('original text');
     const result = sessions.updateLine(lineId, { text: 'corrected text' });
     assert.equal(result, true);
@@ -103,7 +116,7 @@ describe('updateLine with text field', () => {
   });
 
   it('preserves existing text when text field is not provided', async () => {
-    const session = await sessions.create('Test updateLine preserve');
+    await createTestSession('Test updateLine preserve');
     const lineId = sessions.addLine('original text');
     sessions.updateLine(lineId, { translation: 'english text' });
     const active = sessions.getActive();
