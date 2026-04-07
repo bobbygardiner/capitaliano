@@ -888,6 +888,26 @@
       border-radius: 0 4px 4px 0;
     }
     .transcript-line.show-phase1 .line-phase1 { display: block; }
+
+    /* --- Audio play button --- */
+    .line-play-btn {
+      display: inline-block;
+      cursor: pointer;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-right: 4px;
+      transition: color 0.15s ease;
+      user-select: none;
+      vertical-align: baseline;
+    }
+
+    .line-play-btn:hover {
+      color: var(--accent);
+    }
+
+    .line-play-btn.playing {
+      color: var(--accent);
+    }
   </style>
 </head>
 <body class="show-translations">
