@@ -504,6 +504,60 @@ function handleEvent(event) {
       break;
     }
 
+    case 'analysis.upgrade': {
+      const el = lineElements.get(event.lineId);
+      if (!el) break;
+
+      // Check if line is in viewport
+      const rect = el.getBoundingClientRect();
+      const inViewport = rect.top < window.innerHeight && rect.bottom > 0;
+
+      if (inViewport) {
+        el.classList.add('upgrading');
+        el.addEventListener('animationend', () => el.classList.remove('upgrading'), { once: true });
+      }
+
+      // Apply segments/entities/idioms.
+      // When segments are present, applySegments rebuilds the element contents
+      // (including Italian text), so we skip the separate text update.
+      if (event.segments && event.segments.length) {
+        applySegments(el, event.segments, event.entities, event.idioms);
+      } else {
+        // No segments — update Italian text directly if changed
+        if (event.text) {
+          const italianEl = el.querySelector('.line-italian');
+          if (italianEl) italianEl.textContent = event.text;
+        }
+        if (event.translation) addTranslation(el, event.translation);
+        if (event.entities && event.entities.length) {
+          applyEntityHighlighting(el, event.text || el.querySelector('.line-italian')?.textContent, event.entities);
+        }
+        if (event.idioms && event.idioms.length) {
+          applyIdiomHighlighting(el, el.querySelector('.line-italian')?.textContent, event.idioms);
+        }
+      }
+
+      // Track cost
+      if (event.costUsd) {
+        sessionCostUsd += event.costUsd;
+        updateCostDisplay();
+      }
+
+      // Update in-memory session
+      if (currentSession && currentSession.lines) {
+        const line = currentSession.lines[event.lineId];
+        if (line) {
+          if (event.text) line.text = event.text;
+          if (event.translation) line.translation = event.translation;
+          if (event.segments) line.segments = event.segments;
+          if (event.entities) line.entities = event.entities;
+          if (event.idioms) line.idioms = event.idioms;
+        }
+        if (event.idioms && event.idioms.length) renderVocab();
+      }
+      break;
+    }
+
     case 'session.active': {
       // Skip if already loaded (initActiveSession may have run first)
       if (currentSession && currentSession.id === event.session.id) break;

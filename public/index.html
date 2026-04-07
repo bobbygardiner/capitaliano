@@ -853,6 +853,14 @@
       background: var(--surface);
       color: var(--text);
     }
+
+    .transcript-line.upgrading {
+      animation: upgrade-fade 200ms ease-out;
+    }
+    @keyframes upgrade-fade {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
   </style>
 </head>
 <body class="show-translations">
