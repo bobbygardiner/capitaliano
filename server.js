@@ -228,18 +228,10 @@ wss.on('connection', async (ws) => {
             sentenceCount++;
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
-          } else if (sentenceBuffer.length >= 300) {
-            // Force break at last comma
-            const breakIdx = sentenceBuffer.lastIndexOf(',');
-            if (breakIdx > MIN_SENTENCE_LENGTH) {
-              sentenceCount++;
-              finalizeSentence(sentenceBuffer.slice(0, breakIdx + 1));
-              sentenceBuffer = sentenceBuffer.slice(breakIdx + 1).trimStart();
-            } else {
-              sentenceCount++;
-              finalizeSentence(sentenceBuffer);
-              sentenceBuffer = '';
-            }
+          } else if (sentenceBuffer.length >= 500) {
+            sentenceCount++;
+            finalizeSentence(sentenceBuffer);
+            sentenceBuffer = '';
           }
         } else if (event.type === 'transcription.done') {
           console.log('[capito] Mistral stream ended (transcription.done)');
