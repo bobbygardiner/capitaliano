@@ -30,6 +30,13 @@ const PORT = 3000;
 const RE_SESSION_ID = /^\/api\/sessions\/(sess_\d+)$/;
 const RE_SESSION_END = /^\/api\/sessions\/(sess_\d+)\/end$/;
 
+// cleanText regexes (hoisted to avoid per-call compilation)
+const RE_MISSING_SPACE_CAMEL = /([a-zà-ž])([A-ZÀ-Ž])/g;
+const RE_MISSING_SPACE_PUNCT = /([.!?,;:])([A-ZÀ-Ža-zà-ž])/g;
+const RE_REPEATED_WORD = /\b(\w+)\s+\1\b/gi;
+const RE_REPEATED_PAIR = /\b(\w+\s+\w+)\s+\1\b/gi;
+const RE_STUTTERED = /\b(\w{2,4})\s+\1\w+\b/gi;
+
 // --- REST API helpers ---
 
 function sendJson(res, status, data) {
@@ -65,12 +72,6 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 201, session);
       }
 
-      const getMatch = urlPath.match(RE_SESSION_ID);
-      if (getMatch && req.method === 'GET') {
-        const session = await sessions.get(getMatch[1]);
-        return sendJson(res, 200, session);
-      }
-
       const endMatch = urlPath.match(RE_SESSION_END);
       if (endMatch && req.method === 'POST') {
         const active = sessions.getActive();
@@ -81,19 +82,23 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 200, result);
       }
 
-      // DELETE /api/sessions/:id
-      const delMatch = urlPath.match(RE_SESSION_ID);
-      if (delMatch && req.method === 'DELETE') {
-        await sessions.remove(delMatch[1]);
-        return sendJson(res, 200, { deleted: true });
-      }
-
-      // PATCH /api/sessions/:id — update name and/or context
-      const patchMatch = urlPath.match(RE_SESSION_ID);
-      if (patchMatch && req.method === 'PATCH') {
-        const body = await readBody(req);
-        const updated = await sessions.update(patchMatch[1], body);
-        return sendJson(res, 200, updated);
+      const idMatch = urlPath.match(RE_SESSION_ID);
+      if (idMatch) {
+        const id = idMatch[1];
+        if (req.method === 'GET') {
+          const session = await sessions.get(id);
+          return sendJson(res, 200, session);
+        } else if (req.method === 'DELETE') {
+          await sessions.remove(id);
+          return sendJson(res, 200, { deleted: true });
+        } else if (req.method === 'PATCH') {
+          const body = await readBody(req);
+          const updated = await sessions.update(id, body);
+          return sendJson(res, 200, updated);
+        } else {
+          sendJson(res, 405, { error: 'Method not allowed' });
+        }
+        return;
       }
 
       sendJson(res, 404, { error: 'Not found' });
@@ -165,15 +170,19 @@ wss.on('connection', async (ws) => {
   const MIN_SENTENCE_LENGTH = 40;
   const SENTENCE_END = /[.!?]\s*$/;
 
-  // Remove stuttered/duplicated words from Mistral transcription
-  function dedup(text) {
+  // Clean up Mistral transcription artifacts
+  function cleanText(text) {
     return text
+      // Fix missing spaces: "quandoGiroud" → "quando Giroud" (lowercase followed by uppercase)
+      .replace(RE_MISSING_SPACE_CAMEL, '$1 $2')
+      // Fix missing space after punctuation: "mostrando.Christian" → "mostrando. Christian"
+      .replace(RE_MISSING_SPACE_PUNCT, '$1 $2')
       // Remove repeated words: "che che" → "che", "Juan Juan" → "Juan"
-      .replace(/\b(\w+)\s+\1\b/gi, '$1')
+      .replace(RE_REPEATED_WORD, '$1')
       // Remove repeated word pairs: "con con un un" → "con un"
-      .replace(/\b(\w+\s+\w+)\s+\1\b/gi, '$1')
-      // Remove stuttered beginnings: "bra bravovo" → "bravovo", "att attacco" → "attacco"
-      .replace(/\b(\w{2,4})\s+\1\w+\b/gi, (match, prefix, offset, str) => match.split(/\s+/).pop())
+      .replace(RE_REPEATED_PAIR, '$1')
+      // Remove stuttered beginnings: "bra bravovo" → "bravovo"
+      .replace(RE_STUTTERED, (match) => match.split(/\s+/).pop())
       // Clean up double commas/spaces
       .replace(/,,/g, ',')
       .replace(/\s{2,}/g, ' ')
@@ -181,7 +190,7 @@ wss.on('connection', async (ws) => {
   }
 
   function finalizeSentence(raw) {
-    const text = dedup(raw.trim());
+    const text = cleanText(raw.trim());
     if (!text) return;
     const lineId = sessions.addLine(text);
     broadcast({ type: 'transcription.done', lineId, text });
@@ -191,14 +200,7 @@ wss.on('connection', async (ws) => {
       analyzeCommentary(text, ctx).then(analysis => {
         if (analysis) {
           sessions.updateLine(lineId, analysis);
-          broadcast({
-            type: 'analysis', lineId, text,
-            translation: analysis.translation,
-            segments: analysis.segments,
-            entities: analysis.entities,
-            idioms: analysis.idioms,
-            costUsd: analysis.costUsd,
-          });
+          broadcast({ type: 'analysis', lineId, text, ...analysis });
         }
       });
     }

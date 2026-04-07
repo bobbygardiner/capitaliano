@@ -35,7 +35,6 @@ let currentSession = null;
 let audioContext = null;
 let source = null;
 let pcmNode = null;
-let ws = null;
 let activeLineEl = null;
 let waitingEl = null;
 let lineElements = new Map(); // lineId -> DOM element
@@ -319,6 +318,30 @@ function createLineElement(lineId, text, timestamp) {
   return el;
 }
 
+function highlightEntitiesHtml(html, entities) {
+  if (!entities || !entities.length) return html;
+  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
+  for (const ent of sorted) {
+    const escaped = escapeHtml(ent.text);
+    if (html.includes(escaped)) {
+      html = html.replaceAll(escaped, `<span data-entity="${escapeAttr(ent.type)}">${escaped}</span>`);
+    }
+  }
+  return html;
+}
+
+function highlightIdiomsHtml(html, idioms) {
+  if (!idioms || !idioms.length) return html;
+  for (const idiom of idioms) {
+    const expr = escapeHtml(idiom.expression);
+    const meaning = escapeAttr(idiom.meaning);
+    if (html.includes(expr)) {
+      html = html.replace(expr, `<span data-idiom="${meaning}" tabindex="0">${expr}</span>`);
+    }
+  }
+  return html;
+}
+
 function applySegments(lineEl, segments, entities, idioms) {
   // Preserve timestamp, replace Italian + translation with segmented pairs
   const ts = lineEl.querySelector('.line-timestamp');
@@ -343,27 +366,9 @@ function applySegments(lineEl, segments, entities, idioms) {
     const itEl = document.createElement('div');
     itEl.className = 'segment-italian';
 
-    // Apply entity highlighting to this segment's Italian text
     let itHtml = escapeHtml(seg.it);
-    if (entities && entities.length) {
-      const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
-      for (const ent of sorted) {
-        const escaped = escapeHtml(ent.text);
-        if (itHtml.includes(escaped)) {
-          itHtml = itHtml.replaceAll(escaped, `<span data-entity="${escapeAttr(ent.type)}">${escaped}</span>`);
-        }
-      }
-    }
-    // Apply idiom highlighting
-    if (idioms && idioms.length) {
-      for (const idiom of idioms) {
-        const expr = escapeHtml(idiom.expression);
-        const meaning = escapeAttr(idiom.meaning);
-        if (itHtml.includes(expr)) {
-          itHtml = itHtml.replace(expr, `<span data-idiom="${meaning}" tabindex="0">${expr}</span>`);
-        }
-      }
-    }
+    itHtml = highlightEntitiesHtml(itHtml, entities);
+    itHtml = highlightIdiomsHtml(itHtml, idioms);
     itEl.innerHTML = itHtml;
     pair.appendChild(itEl);
 
@@ -381,19 +386,26 @@ function applySegments(lineEl, segments, entities, idioms) {
 function updateLineClasses() {
   const allLines = transcript.querySelectorAll('.transcript-line');
   const count = allLines.length;
-  allLines.forEach((line, i) => {
+  // Only update the last 4 lines (active + recent-1 + recent-2 + previously active)
+  for (let i = Math.max(0, count - 4); i < count; i++) {
+    const line = allLines[i];
     line.classList.remove('active', 'recent-1', 'recent-2');
     const distance = count - 1 - i;
     if (distance === 0) line.classList.add('active');
     else if (distance === 1) line.classList.add('recent-1');
     else if (distance === 2) line.classList.add('recent-2');
-  });
+  }
 }
 
+let scrollRafPending = false;
 function scrollToBottom() {
-  // Only auto-scroll if user hasn't scrolled up
   if (transcript.classList.contains('scrolled-up')) return;
-  transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' });
+  if (scrollRafPending) return;
+  scrollRafPending = true;
+  requestAnimationFrame(() => {
+    transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' });
+    scrollRafPending = false;
+  });
 }
 
 function addTranslation(lineEl, text) {
@@ -404,37 +416,14 @@ function addTranslation(lineEl, text) {
 function applyEntityHighlighting(lineEl, originalText, entities) {
   const italianEl = lineEl.querySelector('.line-italian');
   if (!italianEl || !entities.length) return;
-
-  // Text-search based highlighting (robust against offset errors from LLM)
-  let html = escapeHtml(originalText);
-  // Sort by text length descending to match longer entities first
-  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
-  for (const ent of sorted) {
-    const escaped = escapeHtml(ent.text);
-    if (html.includes(escaped)) {
-      html = html.replaceAll(escaped, `<span data-entity="${escapeAttr(ent.type)}">${escaped}</span>`);
-    }
-  }
-  italianEl.innerHTML = html;
+  italianEl.innerHTML = highlightEntitiesHtml(escapeHtml(originalText), entities);
 }
 
 function applyIdiomHighlighting(lineEl, originalText, idioms) {
   const italianEl = lineEl.querySelector('.line-italian');
   if (!italianEl || !idioms.length) return;
-
   // Get current HTML (may have entity spans already)
-  let html = italianEl.innerHTML;
-
-  // For idioms, we search by expression text rather than offsets (more robust)
-  for (const idiom of idioms) {
-    const expr = escapeHtml(idiom.expression);
-    const meaning = escapeAttr(idiom.meaning);
-    if (html.includes(expr)) {
-      html = html.replace(expr, `<span data-idiom="${meaning}" tabindex="0">${expr}</span>`);
-    }
-  }
-
-  italianEl.innerHTML = html;
+  italianEl.innerHTML = highlightIdiomsHtml(italianEl.innerHTML, idioms);
 }
 
 // --- WebSocket message handling ---
@@ -449,7 +438,7 @@ function handleEvent(event) {
       }
       activeLineEl.querySelector('.line-italian').textContent += event.text;
       scrollToBottom();
-      clearError();
+      if (!errorBanner.classList.contains('hidden')) clearError();
       break;
 
     case 'transcription.done': {
@@ -504,7 +493,7 @@ function handleEvent(event) {
       }
       // Update in-memory session for vocab panel
       if (currentSession && currentSession.lines) {
-        const line = currentSession.lines.find(l => l.lineId === event.lineId);
+        const line = currentSession.lines[event.lineId];
         if (line) {
           if (event.translation) line.translation = event.translation;
           if (event.entities) line.entities = event.entities;
@@ -834,7 +823,7 @@ function connectPersistentWs() {
   persistentWs = new WebSocket(`${wsProtocol}//${location.host}`);
   persistentWs.binaryType = 'arraybuffer';
   persistentWs.onmessage = (e) => {
-    try { handleEvent(JSON.parse(e.data)); } catch {}
+    try { handleEvent(JSON.parse(e.data)); } catch (err) { console.warn('[capito] WS parse error:', err.message); }
   };
   persistentWs.onclose = () => {
     persistentWs = null;
