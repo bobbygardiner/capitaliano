@@ -17,7 +17,7 @@ async function writeFakePcm(sessionId, durationSec) {
 }
 
 describe('GET /api/sessions/:id/audio', () => {
-  const fakeId = 'sess_test_audio';
+  const fakeId = 'sess_9999999999';
 
   before(async () => {
     await writeFakePcm(fakeId, 10);
@@ -28,7 +28,7 @@ describe('GET /api/sessions/:id/audio', () => {
   });
 
   it('returns 404 when .pcm file does not exist', async () => {
-    const res = await fetch('http://localhost:3000/api/sessions/sess_nonexistent/audio?from=0&to=1');
+    const res = await fetch('http://localhost:3000/api/sessions/sess_0000000000/audio?from=0&to=1');
     assert.equal(res.status, 404);
   });
 
