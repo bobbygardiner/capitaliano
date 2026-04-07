@@ -8,7 +8,8 @@ import {
   AudioEncoding,
 } from '@mistralai/mistralai/extra/realtime';
 import * as sessions from './lib/sessions.js';
-import { analyzeCommentary } from './lib/translate.js';
+import { createBatchPipeline, parseContextBias, transcribeBatch } from './lib/batch.js';
+import { analyzeCommentary, splitAndAnalyze } from './lib/translate.js';
 
 config();
 
@@ -165,6 +166,32 @@ wss.on('connection', async (ws) => {
   let connection = null;
   let mistralReady = false;
 
+  // Batch pipeline for phase 2 transcription.
+  // contextBias is computed lazily via transcribeFn so it picks up the
+  // current session's context even if the session was created after WS connect.
+  let cachedBias = null;
+  let cachedBiasContext = undefined; // sentinel: undefined = never computed
+  function getContextBias() {
+    const ctx = sessions.getActive()?.context;
+    if (ctx !== cachedBiasContext) {
+      cachedBiasContext = ctx;
+      cachedBias = parseContextBias(ctx);
+    }
+    return cachedBias;
+  }
+
+  const pipeline = createBatchPipeline({
+    contextBias: [], // not used directly — transcribeFn reads live bias
+    onUpgrade: (lineId, result) => {
+      sessions.updateLine(lineId, result);
+      broadcast({ type: 'analysis.upgrade', lineId, ...result });
+    },
+    transcribeFn: (wavBuffer) => transcribeBatch(wavBuffer, getContextBias()),
+    analyzeFn: (text, _ctx) => analyzeCommentary(text, sessions.getActive()?.context),
+    splitAnalyzeFn: (batchText, originals, _ctx) =>
+      splitAndAnalyze(batchText, originals, sessions.getActive()?.context),
+  });
+
   // Sentence accumulator
   let sentenceBuffer = '';
   const MIN_SENTENCE_LENGTH = 40;
@@ -203,6 +230,7 @@ wss.on('connection', async (ws) => {
           broadcast({ type: 'analysis', lineId, text, ...analysis });
         }
       });
+      pipeline.markSentence(lineId, text);  // <-- add this line
     }
   }
 
@@ -272,6 +300,7 @@ wss.on('connection', async (ws) => {
   ws.on('message', (data, isBinary) => {
     if (!isBinary) return;
     audioCount++;
+    pipeline.pushChunk(data);  // <-- unconditional, before Mistral guard
     if (!connection && !mistralReady && !mistralConnecting) {
       mistralConnecting = true;
       console.log('[capito] First audio chunk received, connecting to Mistral...');
@@ -288,6 +317,7 @@ wss.on('connection', async (ws) => {
     console.log(`[capito] Client disconnected after ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences`);
     clearInterval(statusTimer);
     sentenceBuffer = '';
+    await pipeline.flush();
     if (connection && !connection.isClosed) {
       try { await connection.endAudio(); await connection.close(); } catch {}
     }
