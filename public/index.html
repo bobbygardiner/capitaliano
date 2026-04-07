@@ -231,13 +231,14 @@
       margin-bottom: 14px;
       opacity: 1;
       font-weight: 400;
+      max-width: 720px;
       transition: opacity 0.6s var(--ease-out), font-weight 0.3s ease;
       will-change: opacity;
     }
 
     /* Karaoke cascade only when live-streaming */
     .transcript.live .transcript-line {
-      opacity: 0.28;
+      opacity: 0.35;
       font-weight: 300;
     }
 
@@ -247,12 +248,12 @@
       animation: lineEnter 0.4s var(--ease-out) both;
     }
 
-    .transcript.live .transcript-line.recent-1 { opacity: 0.6; font-weight: 400; }
-    .transcript.live .transcript-line.recent-2 { opacity: 0.4; font-weight: 300; }
+    .transcript.live .transcript-line.recent-1 { opacity: 0.7; font-weight: 400; }
+    .transcript.live .transcript-line.recent-2 { opacity: 0.5; font-weight: 300; }
 
     /* When user scrolls up during live, un-dim for readability */
     .transcript.live.scrolled-up .transcript-line {
-      opacity: 0.85;
+      opacity: 0.8;
       font-weight: 400;
     }
 
@@ -269,20 +270,20 @@
     .line-timestamp {
       font-size: 11px;
       font-variant-numeric: tabular-nums;
-      color: var(--text-muted);
+      color: #A89A8A;
       margin-bottom: 2px;
     }
 
     .line-italian {
-      font-size: 19px;
-      line-height: 1.65;
+      font-size: 17px;
+      line-height: 1.6;
       color: var(--text);
     }
 
     /* Segmented translation pairs — flow inline like a paragraph */
     .line-segments {
-      font-size: 19px;
-      line-height: 1.65;
+      font-size: 17px;
+      line-height: 1.6;
       color: var(--text);
     }
 
@@ -299,7 +300,7 @@
       font-size: 13px;
       line-height: 1.4;
       font-weight: 400;
-      color: #9A8E7F;
+      color: #736860;
       font-style: italic;
       padding-left: 2px;
     }
@@ -320,7 +321,7 @@
       font-size: 13px;
       line-height: 1.45;
       font-weight: 400;
-      color: #9A8E7F;
+      color: #736860;
       font-style: italic;
       margin-top: 2px;
       padding-left: 2px;
@@ -593,6 +594,11 @@
       border-bottom-color: var(--accent);
     }
 
+    .tab-bar.disabled .tab-btn {
+      color: var(--border-strong);
+      pointer-events: none;
+    }
+
     .tab-content { display: none; flex: 1; overflow-y: auto; }
     .tab-content.active { display: flex; flex-direction: column; }
 
@@ -671,6 +677,182 @@
       font-weight: 500;
       color: var(--text-secondary);
     }
+
+    /* --- Pending analysis shimmer --- */
+    .transcript-line.pending-analysis .line-italian,
+    .transcript-line.pending-analysis .segment-italian {
+      background: linear-gradient(90deg, transparent 25%, rgba(61, 53, 41, 0.03) 50%, transparent 75%);
+      background-size: 200% 100%;
+      animation: shimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* --- New session form --- */
+    .new-session-form {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .new-session-form input,
+    .new-session-form textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      margin-bottom: 8px;
+      resize: vertical;
+    }
+
+    .new-session-form input:focus,
+    .new-session-form textarea:focus {
+      border-color: var(--text);
+      outline: none;
+    }
+
+    .new-session-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .new-session-actions button {
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #create-session-btn {
+      background: var(--text);
+      color: var(--bg);
+    }
+
+    #cancel-session-btn {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-strong);
+    }
+
+    /* --- Edit context modal --- */
+    .edit-context-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(61, 53, 41, 0.15);
+      z-index: 199;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s;
+    }
+
+    .edit-context-backdrop.open { opacity: 1; visibility: visible; }
+
+    .edit-context-panel {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.95);
+      width: 420px;
+      max-width: 90vw;
+      max-height: 80vh;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+      z-index: 200;
+      padding: 20px;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s, transform 0.3s var(--ease-out);
+    }
+
+    .edit-context-panel.open {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .edit-context-panel h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .edit-context-panel input,
+    .edit-context-panel textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      margin-bottom: 8px;
+      resize: vertical;
+    }
+
+    .edit-context-panel input:focus,
+    .edit-context-panel textarea:focus {
+      border-color: var(--text);
+      outline: none;
+    }
+
+    .edit-context-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+
+    .edit-context-actions button {
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #save-context-btn {
+      background: var(--text);
+      color: var(--bg);
+    }
+
+    #cancel-context-btn {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-strong);
+    }
+
+    .edit-session-btn {
+      font-family: inherit;
+      font-size: 11px;
+      padding: 3px 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-left: 6px;
+    }
+
+    .edit-session-btn:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
   </style>
 </head>
 <body class="show-translations">
@@ -680,6 +862,14 @@
     <div class="sessions-header">
       <span>Sessions</span>
       <button id="new-session-btn">+ New</button>
+    </div>
+    <div id="new-session-form" class="new-session-form hidden">
+      <input type="text" id="session-name-input" placeholder="e.g. Napoli vs Milan" />
+      <textarea id="session-context-input" rows="4" placeholder="Paste squad names, coaches, stadium (optional)"></textarea>
+      <div class="new-session-actions">
+        <button id="create-session-btn">Create</button>
+        <button id="cancel-session-btn" class="secondary-btn">Cancel</button>
+      </div>
     </div>
     <div id="sessions-list" class="sessions-list"></div>
   </div>
@@ -691,6 +881,7 @@
       <option value="">Loading devices…</option>
     </select>
     <span id="session-name" class="session-name hidden"></span>
+    <button id="edit-session-btn" class="edit-session-btn hidden" title="Edit session context">&#9998;</button>
     <span id="cost-indicator" class="cost-indicator hidden"></span>
     <div class="spacer"></div>
     <div id="status" class="status hidden">
@@ -703,7 +894,7 @@
   </div>
 
   <div id="error-banner" class="error-banner hidden"></div>
-  <div id="tab-bar" class="tab-bar hidden">
+  <div id="tab-bar" class="tab-bar disabled">
     <button class="tab-btn active" data-tab="transcript">Transcript</button>
     <button class="tab-btn" data-tab="vocab">Vocab</button>
   </div>
@@ -716,6 +907,18 @@
   <div id="vocab-panel" class="tab-content">
     <div id="vocab-list" class="vocab-list">
       <div class="vocab-empty">No vocabulary collected yet</div>
+    </div>
+  </div>
+
+  <!-- Edit context modal -->
+  <div id="edit-context-backdrop" class="edit-context-backdrop"></div>
+  <div id="edit-context-panel" class="edit-context-panel">
+    <h3>Edit Session</h3>
+    <input type="text" id="edit-context-name" placeholder="Session name" />
+    <textarea id="edit-context-textarea" rows="6" placeholder="Match context (squad names, coaches, stadium)"></textarea>
+    <div class="edit-context-actions">
+      <button id="cancel-context-btn" class="secondary-btn">Cancel</button>
+      <button id="save-context-btn">Save</button>
     </div>
   </div>
 

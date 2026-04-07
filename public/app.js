@@ -17,6 +17,18 @@ const tabBar = document.getElementById('tab-bar');
 const vocabList = document.getElementById('vocab-list');
 const vocabPanel = document.getElementById('vocab-panel');
 const costIndicator = document.getElementById('cost-indicator');
+const newSessionForm = document.getElementById('new-session-form');
+const sessionNameInput = document.getElementById('session-name-input');
+const sessionContextInput = document.getElementById('session-context-input');
+const createSessionBtn = document.getElementById('create-session-btn');
+const cancelSessionBtn = document.getElementById('cancel-session-btn');
+const editSessionBtn = document.getElementById('edit-session-btn');
+const editContextBackdrop = document.getElementById('edit-context-backdrop');
+const editContextPanel = document.getElementById('edit-context-panel');
+const editContextName = document.getElementById('edit-context-name');
+const editContextTextarea = document.getElementById('edit-context-textarea');
+const saveContextBtn = document.getElementById('save-context-btn');
+const cancelContextBtn = document.getElementById('cancel-context-btn');
 
 // --- State ---
 let currentSession = null;
@@ -97,16 +109,34 @@ function renderSessionsList(sessions) {
     }
     const delBtn = item.querySelector('.del-session-btn');
     if (delBtn) {
+      let confirmPending = false;
+      let confirmTimer = null;
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (!confirm(`Delete "${s.name}"?`)) return;
+        if (!confirmPending) {
+          confirmPending = true;
+          delBtn.textContent = 'Sure?';
+          delBtn.style.background = 'var(--accent)';
+          delBtn.style.color = 'var(--bg)';
+          delBtn.style.borderColor = 'var(--accent)';
+          confirmTimer = setTimeout(() => {
+            confirmPending = false;
+            delBtn.textContent = 'Del';
+            delBtn.style.background = '';
+            delBtn.style.color = '';
+            delBtn.style.borderColor = '';
+          }, 3000);
+          return;
+        }
+        clearTimeout(confirmTimer);
         try {
           await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' });
           if (currentSession && currentSession.id === s.id) {
             currentSession = null;
             sessionNameEl.classList.add('hidden');
+            editSessionBtn.classList.add('hidden');
             costIndicator.classList.add('hidden');
-            tabBar.classList.add('hidden');
+            tabBar.classList.add('disabled');
             clearTranscriptDisplay();
             emptyState.classList.remove('hidden');
             transcript.appendChild(emptyState);
@@ -132,10 +162,18 @@ function formatSessionTime(timestamp) {
   return date.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }) + ', ' + time;
 }
 
-newSessionBtn.addEventListener('click', async () => {
-  const name = prompt('Session name:', 'New Session');
-  if (!name) return;
-  const context = prompt('Match context (optional — paste squad names, coaches, stadium):', '');
+newSessionBtn.addEventListener('click', () => {
+  newSessionForm.classList.toggle('hidden');
+  if (!newSessionForm.classList.contains('hidden')) {
+    sessionNameInput.value = '';
+    sessionContextInput.value = '';
+    sessionNameInput.focus();
+  }
+});
+
+createSessionBtn.addEventListener('click', async () => {
+  const name = sessionNameInput.value.trim() || 'New Session';
+  const context = sessionContextInput.value.trim();
   try {
     const body = { name };
     if (context) body.context = context;
@@ -153,12 +191,19 @@ newSessionBtn.addEventListener('click', async () => {
     currentSession = session;
     sessionNameEl.textContent = session.name;
     sessionNameEl.classList.remove('hidden');
+    editSessionBtn.classList.remove('hidden');
     emptyState.classList.add('hidden');
+    tabBar.classList.remove('disabled');
     clearTranscriptDisplay();
+    newSessionForm.classList.add('hidden');
     closeSessions();
   } catch (err) {
     showError('Failed to create session');
   }
+});
+
+cancelSessionBtn.addEventListener('click', () => {
+  newSessionForm.classList.add('hidden');
 });
 
 async function loadSession(id) {
@@ -168,6 +213,7 @@ async function loadSession(id) {
     currentSession = session;
     sessionNameEl.textContent = session.name;
     sessionNameEl.classList.remove('hidden');
+    editSessionBtn.classList.remove('hidden');
     emptyState.classList.add('hidden');
     renderSession(session);
   } catch (err) {
@@ -193,7 +239,7 @@ function renderSession(session) {
   }
   updateLineClasses();
   scrollToBottom();
-  tabBar.classList.remove('hidden');
+  tabBar.classList.remove('disabled');
   renderVocab();
   sessionCostUsd = calculateSessionCost(session);
   updateCostDisplay();
@@ -411,6 +457,7 @@ function handleEvent(event) {
         activeLineEl.dataset.lineId = event.lineId;
         lineElements.set(event.lineId, activeLineEl);
         activeLineEl.querySelector('.line-italian').textContent = event.text;
+        activeLineEl.classList.add('pending-analysis');
       }
       // Keep client-side session in sync for vocab panel
       if (currentSession && event.lineId !== undefined) {
@@ -435,6 +482,7 @@ function handleEvent(event) {
     case 'analysis': {
       const el = lineElements.get(event.lineId);
       if (!el) break;
+      el.classList.remove('pending-analysis');
 
       if (event.segments && event.segments.length) {
         // Segmented display: interleaved IT/EN pairs
@@ -473,6 +521,7 @@ function handleEvent(event) {
       currentSession = event.session;
       sessionNameEl.textContent = event.session.name;
       sessionNameEl.classList.remove('hidden');
+      editSessionBtn.classList.remove('hidden');
       emptyState.classList.add('hidden');
       renderSession(event.session);
       break;
@@ -699,6 +748,68 @@ document.addEventListener('mouseenter', (e) => {
   const rect = idiom.getBoundingClientRect();
   idiom.classList.toggle('tooltip-below', rect.top < 100);
 }, true);
+
+// --- Keyboard shortcuts ---
+
+document.addEventListener('keydown', (e) => {
+  // Don't trigger when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (stopBtn.classList.contains('hidden')) { start(); } else { stop(); }
+  } else if (e.key === 't' || e.key === 'T') {
+    translationToggle.click();
+  } else if (e.key === 'Escape') {
+    closeSessions();
+    closeEditContext();
+  }
+});
+
+// --- Edit context modal ---
+
+function openEditContext() {
+  if (!currentSession) return;
+  editContextName.value = currentSession.name || '';
+  editContextTextarea.value = currentSession.context || '';
+  editContextBackdrop.classList.add('open');
+  editContextPanel.classList.add('open');
+  editContextName.focus();
+}
+
+function closeEditContext() {
+  editContextBackdrop.classList.remove('open');
+  editContextPanel.classList.remove('open');
+}
+
+editSessionBtn.addEventListener('click', openEditContext);
+editContextBackdrop.addEventListener('click', closeEditContext);
+cancelContextBtn.addEventListener('click', closeEditContext);
+
+saveContextBtn.addEventListener('click', async () => {
+  if (!currentSession) return;
+  const name = editContextName.value.trim() || currentSession.name;
+  const context = editContextTextarea.value.trim();
+  try {
+    const res = await fetch(`/api/sessions/${currentSession.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, context: context || null }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      showError(err.error || 'Failed to update session');
+      return;
+    }
+    const updated = await res.json();
+    currentSession.name = updated.name;
+    currentSession.context = updated.context;
+    sessionNameEl.textContent = updated.name;
+    closeEditContext();
+  } catch (err) {
+    showError('Failed to update session');
+  }
+});
 
 // --- Init ---
 

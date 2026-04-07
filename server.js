@@ -88,6 +88,14 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 200, { deleted: true });
       }
 
+      // PATCH /api/sessions/:id — update name and/or context
+      const patchMatch = urlPath.match(RE_SESSION_ID);
+      if (patchMatch && req.method === 'PATCH') {
+        const body = await readBody(req);
+        const updated = await sessions.update(patchMatch[1], body);
+        return sendJson(res, 200, updated);
+      }
+
       sendJson(res, 404, { error: 'Not found' });
     } catch (err) {
       console.error('[capito] API error:', err.message);
@@ -218,6 +226,18 @@ wss.on('connection', async (ws) => {
             sentenceCount++;
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
+          } else if (sentenceBuffer.length >= 300) {
+            // Force break at last comma
+            const breakIdx = sentenceBuffer.lastIndexOf(',');
+            if (breakIdx > MIN_SENTENCE_LENGTH) {
+              sentenceCount++;
+              finalizeSentence(sentenceBuffer.slice(0, breakIdx + 1));
+              sentenceBuffer = sentenceBuffer.slice(breakIdx + 1).trimStart();
+            } else {
+              sentenceCount++;
+              finalizeSentence(sentenceBuffer);
+              sentenceBuffer = '';
+            }
           }
         } else if (event.type === 'transcription.done') {
           console.log('[capito] Mistral stream ended (transcription.done)');
