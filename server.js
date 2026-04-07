@@ -190,6 +190,7 @@ wss.on('connection', async (ws) => {
     analyzeFn: (text, _ctx) => analyzeCommentary(text, sessions.getActive()?.context),
     splitAnalyzeFn: (batchText, originals, _ctx) =>
       splitAndAnalyze(batchText, originals, sessions.getActive()?.context),
+    getBiasTokens: getContextBias,
   });
 
   // Sentence accumulator

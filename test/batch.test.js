@@ -87,9 +87,10 @@ describe('BatchPipeline', () => {
       }),
     });
 
+    // Push 12 seconds of audio (exceeds 10s coalesce threshold)
     const chunkSize = 8192;
-    const chunksFor5s = Math.ceil(160000 / chunkSize);
-    for (let i = 0; i < chunksFor5s; i++) {
+    const chunksFor12s = Math.ceil(384000 / chunkSize);
+    for (let i = 0; i < chunksFor12s; i++) {
       pipeline.pushChunk(Buffer.alloc(chunkSize));
     }
 
@@ -101,7 +102,7 @@ describe('BatchPipeline', () => {
     assert.ok(upgrades[0].result.translation.startsWith('translated:'));
   });
 
-  it('coalesces short utterances (<3s) with the next one', async () => {
+  it('coalesces short utterances (<10s) with the next one', async () => {
     const upgrades = [];
     const pipeline = createBatchPipeline({
       contextBias: [],
@@ -117,17 +118,19 @@ describe('BatchPipeline', () => {
       },
     });
 
+    // Push 5 seconds of audio (under 10s coalesce threshold)
     const chunkSize = 8192;
-    const chunksFor2s = Math.ceil(64000 / chunkSize);
-    for (let i = 0; i < chunksFor2s; i++) {
+    const chunksFor5s = Math.ceil(160000 / chunkSize);
+    for (let i = 0; i < chunksFor5s; i++) {
       pipeline.pushChunk(Buffer.alloc(chunkSize));
     }
     pipeline.markSentence(0, 'short line one');
 
     assert.equal(upgrades.length, 0);
 
-    const chunksFor4s = Math.ceil(128000 / chunkSize);
-    for (let i = 0; i < chunksFor4s; i++) {
+    // Push 12 seconds (exceeds 10s threshold, triggers coalesced submit)
+    const chunksFor12s = Math.ceil(384000 / chunkSize);
+    for (let i = 0; i < chunksFor12s; i++) {
       pipeline.pushChunk(Buffer.alloc(chunkSize));
     }
     pipeline.markSentence(1, 'second line');
