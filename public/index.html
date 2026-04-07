@@ -861,6 +861,33 @@
       from { opacity: 0.4; }
       to { opacity: 1; }
     }
+
+    /* Phase comparison toggle */
+    .line-phase-toggle {
+      display: none;
+      font-size: 10px;
+      color: var(--accent);
+      cursor: pointer;
+      user-select: none;
+      margin-top: 2px;
+      opacity: 0.6;
+      transition: opacity 0.2s ease;
+    }
+    .line-phase-toggle:hover { opacity: 1; }
+    .transcript-line.has-upgrade .line-phase-toggle { display: inline-block; }
+
+    .line-phase1 {
+      display: none;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #A89A8A;
+      margin-top: 4px;
+      padding: 4px 8px;
+      border-left: 2px solid #D8CCBE;
+      background: color-mix(in srgb, var(--surface) 50%, transparent);
+      border-radius: 0 4px 4px 0;
+    }
+    .transcript-line.show-phase1 .line-phase1 { display: block; }
   </style>
 </head>
 <body class="show-translations">
