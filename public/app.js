@@ -223,7 +223,7 @@ async function loadSession(id) {
 function renderSession(session) {
   clearTranscriptDisplay();
   for (const line of session.lines) {
-    const el = createLineElement(line.lineId, line.text, line.timestamp);
+    const el = createLineElement(line.lineId, line.text, line.timestamp, line.audioOffsetSec);
     if (line.segments && line.segments.length) {
       applySegments(el, line.segments, line.entities, line.idioms);
     } else {
@@ -295,14 +295,32 @@ function formatElapsed(timestamp) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function createLineElement(lineId, text, timestamp) {
+function createLineElement(lineId, text, timestamp, audioOffsetSec) {
   const el = document.createElement('div');
   el.className = 'transcript-line';
   el.dataset.lineId = lineId;
+  if (audioOffsetSec !== undefined && audioOffsetSec !== null) {
+    el.dataset.audioOffset = audioOffsetSec;
+  }
 
   const ts = document.createElement('div');
   ts.className = 'line-timestamp';
-  ts.textContent = formatElapsed(timestamp);
+
+  // Play button (only if audio offset exists)
+  if (audioOffsetSec !== undefined && audioOffsetSec !== null) {
+    const playBtn = document.createElement('span');
+    playBtn.className = 'line-play-btn';
+    playBtn.textContent = '\u25B6';
+    playBtn.title = 'Play audio';
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      playLineAudio(lineId);
+    });
+    ts.appendChild(playBtn);
+  }
+
+  const tsText = document.createTextNode(formatElapsed(timestamp));
+  ts.appendChild(tsText);
   el.appendChild(ts);
 
   const italian = document.createElement('div');
@@ -344,16 +362,18 @@ function highlightIdiomsHtml(html, idioms) {
 }
 
 function applySegments(lineEl, segments, entities, idioms) {
-  // Preserve timestamp, replace Italian + translation with segmented pairs
+  // Preserve timestamp and play button before clearing
   const ts = lineEl.querySelector('.line-timestamp');
-  const tsText = ts ? ts.textContent : '';
+  const tsText = ts ? ts.textContent.replace('\u25B6', '').replace('\u25A0', '').trim() : '';
+  const playBtn = ts ? ts.querySelector('.line-play-btn') : null;
 
   lineEl.innerHTML = '';
 
-  if (tsText) {
+  if (tsText || playBtn) {
     const tsEl = document.createElement('div');
     tsEl.className = 'line-timestamp';
-    tsEl.textContent = tsText;
+    if (playBtn) tsEl.appendChild(playBtn);
+    tsEl.appendChild(document.createTextNode(tsText));
     lineEl.appendChild(tsEl);
   }
 
@@ -491,14 +511,32 @@ function handleEvent(event) {
         lineElements.set(event.lineId, activeLineEl);
         activeLineEl.querySelector('.line-italian').textContent = event.text;
         activeLineEl.classList.add('pending-analysis');
+
+        // Add play button retroactively if audio offset exists
+        if (event.audioOffsetSec !== undefined && event.audioOffsetSec !== null) {
+          activeLineEl.dataset.audioOffset = event.audioOffsetSec;
+          const ts = activeLineEl.querySelector('.line-timestamp');
+          if (ts && !ts.querySelector('.line-play-btn')) {
+            const playBtn = document.createElement('span');
+            playBtn.className = 'line-play-btn';
+            playBtn.textContent = '\u25B6';
+            playBtn.title = 'Play audio';
+            playBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              playLineAudio(event.lineId);
+            });
+            ts.prepend(playBtn);
+          }
+        }
       }
-      // Keep client-side session in sync for vocab panel
+      // Keep client-side session in sync
       if (currentSession && event.lineId !== undefined) {
         if (!currentSession.lines) currentSession.lines = [];
         currentSession.lines.push({
           lineId: event.lineId,
           text: event.text,
           timestamp: new Date().toISOString(),
+          audioOffsetSec: event.audioOffsetSec ?? null,
           final: true,
           translation: null,
           segments: [],
@@ -879,6 +917,13 @@ saveContextBtn.addEventListener('click', async () => {
     showError('Failed to update session');
   }
 });
+
+// --- Audio playback ---
+
+function playLineAudio(lineId) {
+  console.log('[capito] playLineAudio:', lineId);
+  // Implemented in next task
+}
 
 // --- Init ---
 
