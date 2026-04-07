@@ -2,6 +2,7 @@
 
 // Sends an audio file to the Capito server via WebSocket,
 // mimicking what the browser AudioWorklet does.
+// Creates a session first so the full pipeline fires (translation, entities, idioms).
 //
 // Usage: node test/send-audio.js <audio-file> [--server ws://localhost:3000]
 //
@@ -13,33 +14,66 @@ import { resolve } from 'node:path';
 import WebSocket from 'ws';
 
 const audioFile = process.argv[2];
-const serverUrl = process.argv[3] || 'ws://localhost:3000';
+const serverBase = process.argv[3] || 'http://localhost:3000';
+const wsUrl = serverBase.replace(/^http/, 'ws');
 
 if (!audioFile) {
-  console.error('Usage: node test/send-audio.js <audio-file> [ws://localhost:3000]');
+  console.error('Usage: node test/send-audio.js <audio-file> [http://localhost:3000]');
   process.exit(1);
 }
 
 const CHUNK_SIZE = 4096 * 2; // 4096 samples * 2 bytes per sample = 8192 bytes
 const CHUNK_INTERVAL_MS = 256; // 256ms per chunk at 16kHz
 
+// --- Create a session first ---
+
+async function createSession() {
+  const res = await fetch(`${serverBase}/api/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: `Test: ${audioFile.split('/').pop()}` }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    // If session already active, that's fine
+    if (res.status === 409) {
+      console.log(`[test] Session already active, reusing it`);
+      return;
+    }
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const session = await res.json();
+  console.log(`[test] Session created: ${session.name} (${session.id})`);
+}
+
+async function endSession() {
+  const listRes = await fetch(`${serverBase}/api/sessions`);
+  const { sessions } = await listRes.json();
+  const active = sessions.find(s => !s.endedAt);
+  if (active) {
+    await fetch(`${serverBase}/api/sessions/${active.id}/end`, { method: 'POST' });
+    console.log(`[test] Session ended: ${active.id} (${active.lineCount} lines)`);
+  }
+}
+
+// --- Main ---
+
 console.log(`[test] Audio file: ${resolve(audioFile)}`);
-console.log(`[test] Server: ${serverUrl}`);
+console.log(`[test] Server: ${serverBase}`);
+
+await createSession();
+
 console.log(`[test] Converting to PCM16 16kHz mono...`);
 
-// Convert audio to raw PCM16 16kHz mono using ffmpeg
 const ffmpeg = spawn('ffmpeg', [
   '-i', resolve(audioFile),
-  '-f', 's16le',
-  '-ar', '16000',
-  '-ac', '1',
-  '-acodec', 'pcm_s16le',
+  '-f', 's16le', '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
   'pipe:1',
 ]);
 
 const pcmChunks = [];
 ffmpeg.stdout.on('data', (chunk) => pcmChunks.push(chunk));
-ffmpeg.stderr.on('data', () => {}); // suppress ffmpeg progress output
+ffmpeg.stderr.on('data', () => {});
 
 ffmpeg.on('close', (code) => {
   if (code !== 0) {
@@ -51,40 +85,49 @@ ffmpeg.on('close', (code) => {
   const totalChunks = Math.ceil(pcmData.length / CHUNK_SIZE);
   const durationSecs = pcmData.length / (16000 * 2);
   console.log(`[test] PCM data: ${pcmData.length} bytes, ${durationSecs.toFixed(1)}s, ${totalChunks} chunks`);
-  console.log(`[test] Connecting to ${serverUrl}...`);
 
-  const ws = new WebSocket(serverUrl);
+  const ws = new WebSocket(wsUrl);
   let chunkIndex = 0;
   let eventCount = 0;
+  let doneCount = 0;
+  let analysisCount = 0;
+  const pendingTranslations = new Map(); // lineId -> timestamp when done was received
 
   ws.on('open', () => {
-    console.log(`[test] Connected. Streaming audio...`);
-    console.log('');
+    console.log(`[test] Connected. Streaming audio...\n`);
 
     const interval = setInterval(() => {
       if (chunkIndex >= totalChunks) {
         clearInterval(interval);
-        console.log('');
-        console.log(`[test] All ${totalChunks} chunks sent. Waiting for remaining events...`);
-        // Wait a bit for final events, then close
+        console.log(`\n\n[test] All ${totalChunks} chunks sent. Waiting for translations...`);
+        // Wait longer for claude -p translations to complete
+        const waitTime = Math.max(30000, doneCount * 15000);
+        console.log(`[test] Waiting up to ${(waitTime/1000).toFixed(0)}s for ${doneCount - analysisCount} pending translations...`);
         setTimeout(() => {
-          console.log(`[test] Done. Received ${eventCount} events.`);
-          ws.close(1000);
-          process.exit(0);
-        }, 5000);
+          console.log(`\n--- SUMMARY ---`);
+          console.log(`Events: ${eventCount} total`);
+          console.log(`Lines finalized: ${doneCount}`);
+          console.log(`Translations received: ${analysisCount}`);
+          console.log(`Translations pending: ${doneCount - analysisCount}`);
+          if (pendingTranslations.size) {
+            console.log(`Still waiting for lineIds: ${[...pendingTranslations.keys()].join(', ')}`);
+          }
+          endSession().then(() => {
+            ws.close(1000);
+            process.exit(0);
+          });
+        }, waitTime);
         return;
       }
 
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, pcmData.length);
-      const chunk = pcmData.subarray(start, end);
-      ws.send(chunk);
+      ws.send(pcmData.subarray(start, end));
       chunkIndex++;
 
-      // Progress every 20 chunks (~5 seconds)
       if (chunkIndex % 20 === 0) {
         const elapsed = (chunkIndex * CHUNK_INTERVAL_MS / 1000).toFixed(1);
-        process.stdout.write(`\r[test] Sent ${chunkIndex}/${totalChunks} chunks (${elapsed}s)`);
+        process.stdout.write(`\r[test] Sent ${chunkIndex}/${totalChunks} chunks (${elapsed}s) | lines: ${doneCount} | translations: ${analysisCount}`);
       }
     }, CHUNK_INTERVAL_MS);
   });
@@ -96,40 +139,40 @@ ffmpeg.on('close', (code) => {
 
       switch (event.type) {
         case 'session.active':
-          console.log(`[event] Session: ${event.session.name} (${event.session.lines.length} lines)`);
+          console.log(`[session] ${event.session.name} (${event.session.lines.length} existing lines)`);
           break;
+
         case 'transcription.text.delta':
-          process.stdout.write(event.text);
+          // silent during streaming — too noisy
           break;
+
         case 'transcription.done':
-          console.log(`\n[done] lineId=${event.lineId}: "${event.text}"`);
+          doneCount++;
+          pendingTranslations.set(event.lineId, Date.now());
+          console.log(`\n[${doneCount}] IT: "${event.text}"`);
           break;
-        case 'analysis':
-          console.log(`[analysis] lineId=${event.lineId}:`);
-          if (event.translation) console.log(`  EN: ${event.translation}`);
-          if (event.entities?.length) console.log(`  Entities: ${event.entities.map(e => `${e.text}(${e.type})`).join(', ')}`);
-          if (event.idioms?.length) console.log(`  Idioms: ${event.idioms.map(i => `"${i.expression}"`).join(', ')}`);
+
+        case 'analysis': {
+          analysisCount++;
+          const sentAt = pendingTranslations.get(event.lineId);
+          const latency = sentAt ? ((Date.now() - sentAt) / 1000).toFixed(1) : '?';
+          pendingTranslations.delete(event.lineId);
+          console.log(`    EN: "${event.translation}" [${latency}s]`);
+          if (event.segments?.length) console.log(`    Segments: ${event.segments.length}`);
+          if (event.entities?.length) console.log(`    Entities: ${event.entities.map(e => `${e.text}(${e.type})`).join(', ')}`);
+          if (event.idioms?.length) console.log(`    Idioms: ${event.idioms.map(i => `"${i.expression}"`).join(', ')}`);
           break;
-        case 'transcription.language':
-          console.log(`[event] Language detected: ${event.audioLanguage}`);
-          break;
+        }
+
         case 'error':
-          console.error(`[error] ${event.message || JSON.stringify(event.error)}`);
+          console.error(`\n[error] ${event.message || JSON.stringify(event.error)}`);
           break;
-        default:
-          console.log(`[event] ${event.type}`);
       }
     } catch (err) {
-      console.error('[test] Failed to parse event:', err.message);
+      console.error('[test] Parse error:', err.message);
     }
   });
 
-  ws.on('close', (code) => {
-    console.log(`[test] WebSocket closed (code ${code})`);
-  });
-
-  ws.on('error', (err) => {
-    console.error(`[test] WebSocket error: ${err.message}`);
-    process.exit(1);
-  });
+  ws.on('close', (code) => console.log(`[test] WebSocket closed (code ${code})`));
+  ws.on('error', (err) => { console.error(`[test] WebSocket error: ${err.message}`); process.exit(1); });
 });
