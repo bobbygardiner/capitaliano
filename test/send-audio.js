@@ -112,10 +112,9 @@ ffmpeg.on('close', (code) => {
           if (pendingTranslations.size) {
             console.log(`Still waiting for lineIds: ${[...pendingTranslations.keys()].join(', ')}`);
           }
-          endSession().then(() => {
-            ws.close(1000);
-            process.exit(0);
-          });
+          // Don't end session — let the user manage lifecycle
+          ws.close(1000);
+          process.exit(0);
         }, waitTime);
         return;
       }
