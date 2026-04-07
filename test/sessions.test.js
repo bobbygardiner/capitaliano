@@ -58,6 +58,27 @@ describe('setAudioStartedAt', () => {
   });
 });
 
+describe('remove deletes pcm file', () => {
+  before(async () => {
+    await sessions.init();
+    try { await sessions.end(); } catch {}
+  });
+
+  it('deletes .pcm file when removing a session', async () => {
+    const session = await sessions.create('Test PCM cleanup');
+    const id = session.id;
+    await sessions.end();
+
+    // Create a fake .pcm file
+    const pcmPath = join('sessions', `${id}.pcm`);
+    await writeFile(pcmPath, Buffer.alloc(100));
+    assert.equal(existsSync(pcmPath), true);
+
+    await sessions.remove(id);
+    assert.equal(existsSync(pcmPath), false);
+  });
+});
+
 describe('updateLine with text field', () => {
   let testSessionId = null;
 
