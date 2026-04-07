@@ -235,24 +235,7 @@ function renderSession(session) {
         applyIdiomHighlighting(el, line.text, line.idioms);
       }
     }
-    // Show phase comparison for lines that have phase 1 data stored
-    if (line.phase1Text) {
-      el.classList.add('has-upgrade');
-      const phase1El = document.createElement('div');
-      phase1El.className = 'line-phase1';
-      phase1El.innerHTML = `<strong>Phase 1:</strong> ${escapeHtml(line.phase1Text)}${line.phase1Translation ? '<br><em>' + escapeHtml(line.phase1Translation) + '</em>' : ''}`;
-      el.appendChild(phase1El);
-      const toggle = document.createElement('div');
-      toggle.className = 'line-phase-toggle';
-      toggle.textContent = 'P1 \u2194 P2';
-      toggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        el.classList.toggle('show-phase1');
-      });
-      const ts = el.querySelector('.line-timestamp');
-      if (ts) ts.after(toggle);
-      else el.prepend(toggle);
-    }
+    if (line.phase1Text) attachPhaseComparison(el, line.phase1Text, line.phase1Translation);
   }
   updateLineClasses();
   scrollToBottom();
@@ -435,6 +418,40 @@ function preserveScroll(fn) {
   transcript.scrollTop = scrollBefore;
 }
 
+function attachPhaseComparison(el, p1Text, p1Translation) {
+  if (el.querySelector('.line-phase1')) return;
+  el.classList.add('has-upgrade');
+  const phase1El = document.createElement('div');
+  phase1El.className = 'line-phase1';
+  phase1El.innerHTML = `<strong>Phase 1:</strong> ${escapeHtml(p1Text)}${p1Translation ? '<br><em>' + escapeHtml(p1Translation) + '</em>' : ''}`;
+  el.appendChild(phase1El);
+  const toggle = document.createElement('div');
+  toggle.className = 'line-phase-toggle';
+  toggle.textContent = 'P1 \u2194 P2';
+  toggle.addEventListener('click', (e) => { e.stopPropagation(); el.classList.toggle('show-phase1'); });
+  const ts = el.querySelector('.line-timestamp');
+  if (ts) ts.after(toggle);
+  else el.prepend(toggle);
+}
+
+function applyAnalysisToElement(el, event) {
+  if (event.segments && event.segments.length) {
+    applySegments(el, event.segments, event.entities, event.idioms);
+  } else {
+    if (event.text) {
+      const italianEl = el.querySelector('.line-italian');
+      if (italianEl) italianEl.textContent = event.text;
+    }
+    if (event.translation) addTranslation(el, event.translation);
+    if (event.entities && event.entities.length) {
+      applyEntityHighlighting(el, event.text || el.querySelector('.line-italian')?.textContent, event.entities);
+    }
+    if (event.idioms && event.idioms.length) {
+      applyIdiomHighlighting(el, el.querySelector('.line-italian')?.textContent, event.idioms);
+    }
+  }
+}
+
 function addTranslation(lineEl, text) {
   const translationEl = lineEl.querySelector('.line-translation');
   if (translationEl) translationEl.textContent = text;
@@ -500,18 +517,7 @@ function handleEvent(event) {
       if (!el) break;
       preserveScroll(() => {
         el.classList.remove('pending-analysis');
-
-        if (event.segments && event.segments.length) {
-          applySegments(el, event.segments, event.entities, event.idioms);
-        } else {
-          if (event.translation) addTranslation(el, event.translation);
-          if (event.entities && event.entities.length) {
-            applyEntityHighlighting(el, event.text || el.querySelector('.line-italian').textContent, event.entities);
-          }
-          if (event.idioms && event.idioms.length) {
-            applyIdiomHighlighting(el, el.querySelector('.line-italian').textContent, event.idioms);
-          }
-        }
+        applyAnalysisToElement(el, event);
       });
       // Track cost
       if (event.costUsd) {
@@ -545,48 +551,13 @@ function handleEvent(event) {
       }
 
       preserveScroll(() => {
-        // Store phase 1 data before overwriting (for comparison UI)
+        // Store phase 1 data before overwriting
         const p1Line = currentSession?.lines?.[event.lineId];
-        const p1Text = p1Line?.text || el.querySelector('.line-italian')?.textContent || el.querySelector('.segment-italian')?.textContent || '';
-        const p1Translation = p1Line?.translation || '';
+        const p1Text = p1Line?.text ?? '';
+        const p1Translation = p1Line?.translation ?? '';
 
-        // Apply phase 2 segments/entities/idioms
-        if (event.segments && event.segments.length) {
-          applySegments(el, event.segments, event.entities, event.idioms);
-        } else {
-          if (event.text) {
-            const italianEl = el.querySelector('.line-italian');
-            if (italianEl) italianEl.textContent = event.text;
-          }
-          if (event.translation) addTranslation(el, event.translation);
-          if (event.entities && event.entities.length) {
-            applyEntityHighlighting(el, event.text || el.querySelector('.line-italian')?.textContent, event.entities);
-          }
-          if (event.idioms && event.idioms.length) {
-            applyIdiomHighlighting(el, el.querySelector('.line-italian')?.textContent, event.idioms);
-          }
-        }
-
-        // Add phase comparison UI
-        el.classList.add('has-upgrade');
-        if (!el.querySelector('.line-phase1')) {
-          const phase1El = document.createElement('div');
-          phase1El.className = 'line-phase1';
-          phase1El.innerHTML = `<strong>Phase 1:</strong> ${escapeHtml(p1Text)}${p1Translation ? '<br><em>' + escapeHtml(p1Translation) + '</em>' : ''}`;
-          el.appendChild(phase1El);
-
-          const toggle = document.createElement('div');
-          toggle.className = 'line-phase-toggle';
-          toggle.textContent = 'P1 \u2194 P2';
-          toggle.addEventListener('click', (e) => {
-            e.stopPropagation();
-            el.classList.toggle('show-phase1');
-          });
-          // Insert toggle after timestamp
-          const ts = el.querySelector('.line-timestamp');
-          if (ts) ts.after(toggle);
-          else el.prepend(toggle);
-        }
+        applyAnalysisToElement(el, event);
+        attachPhaseComparison(el, p1Text, p1Translation);
       });
 
       // Track cost

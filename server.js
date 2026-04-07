@@ -184,13 +184,12 @@ wss.on('connection', async (ws) => {
   const pipeline = phase2Enabled ? createBatchPipeline({
     contextBias: [], // not used directly — transcribeFn reads live bias
     onUpgrade: (lineId, result) => {
-      // Store phase 1 data before overwriting
       const active = sessions.getActive();
       const line = active?.lines?.[lineId];
-      if (line && !line.phase1Text) {
-        sessions.updateLine(lineId, { phase1Text: line.text, phase1Translation: line.translation });
-      }
-      sessions.updateLine(lineId, result);
+      const phase1 = (line && !line.phase1Text)
+        ? { phase1Text: line.text, phase1Translation: line.translation }
+        : {};
+      sessions.updateLine(lineId, { ...phase1, ...result });
       broadcast({ type: 'analysis.upgrade', lineId, ...result });
     },
     transcribeFn: (wavBuffer) => transcribeBatch(wavBuffer, getContextBias()),
