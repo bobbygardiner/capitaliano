@@ -199,23 +199,31 @@ wss.on('connection', async (ws) => {
 
       // Forward Mistral events with sentence segmentation
       for await (const event of connection) {
-        if (ws.readyState !== ws.OPEN) break;
+        if (ws.readyState !== ws.OPEN) { console.log('[capito] WS closed, stopping Mistral event loop'); break; }
+        eventCount++;
+        lastEventTime = Date.now();
         if (event.type === 'transcription.text.delta') {
           broadcast(event);
           sentenceBuffer += event.text;
           if (sentenceBuffer.length >= MIN_SENTENCE_LENGTH && SENTENCE_END.test(sentenceBuffer)) {
+            sentenceCount++;
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
           }
         } else if (event.type === 'transcription.done') {
+          console.log('[capito] Mistral stream ended (transcription.done)');
           if (sentenceBuffer.trim()) {
+            sentenceCount++;
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
           }
+        } else {
+          console.log('[capito] Mistral event:', event.type);
         }
       }
+      console.log('[capito] Mistral event loop ended — total events:', eventCount, 'sentences:', sentenceCount);
     } catch (err) {
-      console.error('[capito] Mistral error:', err.message);
+      console.error('[capito] Mistral error:', err.message, err.code || '');
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: String(err.message || err) }));
       }
@@ -224,10 +232,26 @@ wss.on('connection', async (ws) => {
 
   // Only connect to Mistral when binary audio arrives
   let mistralConnecting = false;
+  let audioCount = 0;
+  let lastEventTime = null;
+  let eventCount = 0;
+  let sentenceCount = 0;
+
+  // Periodic status log (every 60 seconds of audio)
+  const statusTimer = setInterval(() => {
+    if (audioCount > 0) {
+      const elapsed = (audioCount * 0.256).toFixed(0);
+      const silenceSecs = lastEventTime ? ((Date.now() - lastEventTime) / 1000).toFixed(0) : 'n/a';
+      console.log(`[capito] Status: ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences, ${silenceSecs}s since last event, mistral: ${mistralReady ? 'ready' : 'connecting'}`);
+    }
+  }, 60000);
+
   ws.on('message', (data, isBinary) => {
     if (!isBinary) return;
+    audioCount++;
     if (!connection && !mistralReady && !mistralConnecting) {
       mistralConnecting = true;
+      console.log('[capito] First audio chunk received, connecting to Mistral...');
       startMistral();
     }
     if (mistralReady && connection && !connection.isClosed) {
@@ -237,7 +261,9 @@ wss.on('connection', async (ws) => {
 
   // Cleanup on disconnect
   ws.on('close', async () => {
-    console.log('[capito] Client disconnected');
+    const elapsed = (audioCount * 0.256).toFixed(0);
+    console.log(`[capito] Client disconnected after ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences`);
+    clearInterval(statusTimer);
     sentenceBuffer = '';
     if (connection && !connection.isClosed) {
       try { await connection.endAudio(); await connection.close(); } catch {}
