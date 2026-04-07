@@ -33,6 +33,31 @@ describe('addLine with audioOffsetSec', () => {
   });
 });
 
+describe('setAudioStartedAt', () => {
+  before(async () => {
+    await sessions.init();
+    try { await sessions.end(); } catch {}
+  });
+
+  after(async () => {
+    try { await sessions.end(); } catch {}
+  });
+
+  it('stores audioStartedAt on the active session', async () => {
+    await sessions.create('Test audio start');
+    const ts = new Date().toISOString();
+    sessions.setAudioStartedAt(ts);
+    const active = sessions.getActive();
+    assert.equal(active.audioStartedAt, ts);
+    await sessions.end();
+  });
+
+  it('does nothing when no active session', () => {
+    sessions.setAudioStartedAt(new Date().toISOString());
+    // should not throw
+  });
+});
+
 describe('updateLine with text field', () => {
   let testSessionId = null;
 
