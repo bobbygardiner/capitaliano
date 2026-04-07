@@ -16,18 +16,24 @@ Federico Dimarco; Hakan Calhanoglu, Nicolò Barella, Piotr Zielinski; Marcus Thu
 Substitutes: Josep Martínez, Raffaele Di Gennaro
 `;
     const names = parseContextBias(context);
-    assert.ok(names.includes('Yann Sommer'));
-    assert.ok(names.includes('Lautaro Martínez'));
-    assert.ok(names.includes('Cristian Chivu'));
-    assert.ok(names.includes('Inter Milan'));
-    assert.ok(names.includes('AS Roma'));
-    assert.ok(names.includes('Josep Martínez'));
+    // context_bias requires single tokens — names are split into words
+    assert.ok(names.includes('Sommer'));
+    assert.ok(names.includes('Martínez'));
+    assert.ok(names.includes('Chivu'));
+    assert.ok(names.includes('Inter'));
+    assert.ok(names.includes('Roma'));
+    assert.ok(names.includes('Thuram'));
+    assert.ok(names.includes('Lautaro'));
+    // Should not have multi-word entries
+    assert.ok(!names.includes('Yann Sommer'));
+    assert.ok(!names.includes('Inter Milan'));
   });
 
   it('filters out short tokens and lowercase words', () => {
     const context = 'Starters: Yann Sommer; the quick brown fox';
     const names = parseContextBias(context);
-    assert.ok(names.includes('Yann Sommer'));
+    assert.ok(names.includes('Yann'));
+    assert.ok(names.includes('Sommer'));
     assert.ok(!names.includes('the'));
     assert.ok(!names.includes('quick'));
     assert.ok(!names.includes('brown'));
@@ -50,9 +56,14 @@ Substitutes: Josep Martínez, Raffaele Di Gennaro
     const { readFile } = await import('node:fs/promises');
     const context = await readFile('test/fixtures/inter-roma-context.txt', 'utf-8');
     const names = parseContextBias(context);
-    assert.ok(names.includes('Lautaro Martínez'), 'should find Lautaro Martínez');
-    assert.ok(names.includes('Lorenzo Pellegrini'), 'should find Pellegrini');
-    assert.ok(names.includes('Gian Piero Gasperini'), 'should find Gasperini');
+    // Single-token entries after split
+    assert.ok(names.includes('Lautaro'), 'should find Lautaro');
+    assert.ok(names.includes('Martínez'), 'should find Martínez');
+    assert.ok(names.includes('Pellegrini'), 'should find Pellegrini');
+    assert.ok(names.includes('Gasperini'), 'should find Gasperini');
+    assert.ok(names.includes('Thuram'), 'should find Thuram');
+    // No multi-word entries
+    assert.ok(!names.some(n => n.includes(' ')), 'no multi-word entries');
     assert.ok(names.length >= 20, `expected >=20 names, got ${names.length}`);
     assert.ok(names.length <= 100, `expected <=100 names, got ${names.length}`);
   });

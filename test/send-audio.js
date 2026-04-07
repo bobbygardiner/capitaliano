@@ -15,7 +15,9 @@ import { readFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 
 const audioFile = process.argv[2];
-const serverBase = process.argv[3] || 'http://localhost:3000';
+// Skip --flags when looking for serverBase positional arg
+const serverArg = process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : null;
+const serverBase = serverArg || 'http://localhost:3000';
 const wsUrl = serverBase.replace(/^http/, 'ws');
 
 if (!audioFile) {
