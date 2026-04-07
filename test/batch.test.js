@@ -1,7 +1,7 @@
 // test/batch.test.js
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseContextBias } from '../lib/batch.js';
+import { parseContextBias, createBatchPipeline } from '../lib/batch.js';
 
 describe('parseContextBias', () => {
   it('extracts player names from structured match context', () => {
@@ -55,5 +55,94 @@ Substitutes: Josep Martínez, Raffaele Di Gennaro
     assert.ok(names.includes('Gian Piero Gasperini'), 'should find Gasperini');
     assert.ok(names.length >= 20, `expected >=20 names, got ${names.length}`);
     assert.ok(names.length <= 100, `expected <=100 names, got ${names.length}`);
+  });
+});
+
+describe('BatchPipeline', () => {
+  it('accumulates chunks and extracts audio on markSentence', async () => {
+    const upgrades = [];
+    const pipeline = createBatchPipeline({
+      contextBias: ['Thuram'],
+      onUpgrade: (lineId, result) => upgrades.push({ lineId, result }),
+      transcribeFn: async (wavBuffer, contextBias) => {
+        return { text: `transcribed:${wavBuffer.length}bytes` };
+      },
+      analyzeFn: async (text, ctx) => ({
+        translation: `translated:${text}`,
+        segments: [],
+        entities: [],
+        idioms: [],
+        costUsd: 0.001,
+      }),
+    });
+
+    const chunkSize = 8192;
+    const chunksFor5s = Math.ceil(160000 / chunkSize);
+    for (let i = 0; i < chunksFor5s; i++) {
+      pipeline.pushChunk(Buffer.alloc(chunkSize));
+    }
+
+    pipeline.markSentence(0);
+    await pipeline.flush();
+
+    assert.equal(upgrades.length, 1);
+    assert.equal(upgrades[0].lineId, 0);
+    assert.ok(upgrades[0].result.translation.startsWith('translated:'));
+  });
+
+  it('coalesces short utterances (<3s) with the next one', async () => {
+    const upgrades = [];
+    const pipeline = createBatchPipeline({
+      contextBias: [],
+      onUpgrade: (lineId, result) => upgrades.push({ lineId, result }),
+      transcribeFn: async (wavBuffer) => ({ text: 'coalesced text' }),
+      analyzeFn: async (text) => ({
+        translation: text, segments: [], entities: [], idioms: [], costUsd: 0.001,
+      }),
+      splitAnalyzeFn: async (batchText, originals, ctx) => {
+        return originals.map((_, i) => ({
+          translation: `split-${i}`, segments: [], entities: [], idioms: [], costUsd: 0.001,
+        }));
+      },
+    });
+
+    const chunkSize = 8192;
+    const chunksFor2s = Math.ceil(64000 / chunkSize);
+    for (let i = 0; i < chunksFor2s; i++) {
+      pipeline.pushChunk(Buffer.alloc(chunkSize));
+    }
+    pipeline.markSentence(0, 'short line one');
+
+    assert.equal(upgrades.length, 0);
+
+    const chunksFor4s = Math.ceil(128000 / chunkSize);
+    for (let i = 0; i < chunksFor4s; i++) {
+      pipeline.pushChunk(Buffer.alloc(chunkSize));
+    }
+    pipeline.markSentence(1, 'second line');
+
+    await pipeline.flush();
+
+    assert.equal(upgrades.length, 2);
+    assert.equal(upgrades[0].lineId, 0);
+    assert.equal(upgrades[1].lineId, 1);
+  });
+
+  it('respects 1MB audio cap and discards excess', () => {
+    const pipeline = createBatchPipeline({
+      contextBias: [],
+      onUpgrade: () => {},
+      transcribeFn: async () => ({ text: '' }),
+      analyzeFn: async () => null,
+    });
+
+    const chunkSize = 8192;
+    const chunksFor1_5MB = Math.ceil(1572864 / chunkSize);
+    for (let i = 0; i < chunksFor1_5MB; i++) {
+      pipeline.pushChunk(Buffer.alloc(chunkSize));
+    }
+
+    assert.ok(pipeline.pendingBytes() <= 1048576,
+      `expected <=1MB, got ${pipeline.pendingBytes()}`);
   });
 });
