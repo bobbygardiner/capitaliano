@@ -13,7 +13,15 @@ stream at `sessions/<session-id>.pcm`. Append every subsequent binary chunk to
 this file — the same PCM16 16kHz mono data already being sent to Mistral.
 
 Track `sessionAudioStartTime` (the `Date.now()` when the first chunk arrives) so
-line offsets can be computed relative to it.
+line offsets can be computed relative to it. Persist this value in the session
+JSON as `audioStartedAt` (ISO string) so it survives reconnection.
+
+On reconnection (client disconnects and reconnects to an active session) or
+server restart, the file stream is opened lazily on the first audio chunk — the
+same code path as initial creation, but opening in append mode when the file
+already exists. `sessionAudioStartTime` is restored from the persisted
+`audioStartedAt`. This means no special recovery logic is needed in
+`sessions.init()` — the "open on first chunk" behavior handles all cases.
 
 On session end or client disconnect, close the file stream. On session delete,
 remove the `.pcm` file alongside the `.json`.
@@ -26,23 +34,37 @@ The file is append-only, so it is safe to read earlier bytes while still writing
 - Raw PCM16, 16kHz, mono, little-endian
 - No header — just concatenated audio samples
 - ~1.9 MB/min, ~170 MB for a full match
-- Byte offset formula: `byteOffset = Math.floor(seconds × 16000 × 2)`
+- Byte offset formula: `byteOffset = Math.floor(seconds × 16000) × 2`
+  (multiply before ×2 to guarantee even byte alignment for 16-bit samples)
 
 ## Line Audio Offsets
 
 `addLine()` in `sessions.js` currently stores `timestamp` as an ISO date string.
 Add a new field `audioOffsetSec` — the number of seconds from the session's first
-audio chunk to when the line was finalized:
+audio chunk to when the line was finalized.
 
+**Timing note:** `audioOffsetSec` marks when the line was *finalized* (after
+Mistral processing + sentence accumulation), not when the speech was originally
+spoken. This means the offset points to slightly after the actual speech. This is
+acceptable because playback uses `from = previous line's offset` to
+`to = this line's offset`, which naturally captures the speech that occurred in
+that window. The first line plays from offset 0.
+
+### Computation
+
+`server.js` computes the offset in `finalizeSentence()` where it already calls
+`sessions.addLine()`:
+
+```js
+const audioOffsetSec = sessionAudioStartTime
+  ? (Date.now() - sessionAudioStartTime) / 1000
+  : null;
+sessions.addLine(text, audioOffsetSec);
 ```
-audioOffsetSec = (Date.now() - sessionAudioStartTime) / 1000
-```
 
-This is stored on each line object alongside the existing `timestamp`. The
-existing `timestamp` field is unchanged — `audioOffsetSec` is additive.
-
-The `sessionAudioStartTime` value must be passed from `server.js` (where audio
-arrives) into the sessions module so `addLine()` can compute the offset.
+`addLine()` in `sessions.js` accepts the pre-computed offset as a second
+parameter and stores it on the line object. This keeps the sessions module
+decoupled from audio timing concerns.
 
 ## REST Endpoint
 
@@ -53,10 +75,13 @@ GET /api/sessions/:id/audio?from=X&to=Y
 Where `from` and `to` are seconds (floats). The handler:
 
 1. Resolves the `.pcm` file path: `sessions/<id>.pcm`
-2. Converts `from`/`to` to byte offsets: `Math.floor(seconds × 16000 × 2)`
-3. Reads that byte range from the file (clamped to actual file size)
-4. Prepends a 44-byte WAV header (PCM16, 16kHz, mono, correct data length)
-5. Responds with `Content-Type: audio/wav`
+2. Returns 404 if the file does not exist (e.g., sessions from before this
+   feature, or sessions where no audio was sent)
+3. Converts `from`/`to` to byte offsets: `Math.floor(seconds × 16000) × 2`
+4. Clamps to actual file size
+5. Reads that byte range from the file
+6. Prepends a WAV header using the existing `pcmToWav()` from `lib/audio.js`
+7. Responds with `Content-Type: audio/wav`
 
 If `to` is omitted, reads to end of file. If `from` is omitted, starts from 0.
 
@@ -66,11 +91,14 @@ Route pattern: `RE_SESSION_AUDIO = /^\/api\/sessions\/(sess_\d+)\/audio$/`
 
 Each finalized transcript line shows a `▶` play icon next to the elapsed
 timestamp (e.g., `▶ 12:34`). The icon is always visible, not hidden behind hover.
+Only rendered when the line has a non-null `audioOffsetSec`.
 
 ### Click behavior
 
-1. Compute `from` = this line's `audioOffsetSec`, `to` = next line's
-   `audioOffsetSec` (omit `to` for the last line)
+1. Compute `from` = previous line's `audioOffsetSec` (or 0 for the first line),
+   `to` = this line's `audioOffsetSec`. This captures the audio window in which
+   the speech for this line occurred, since `audioOffsetSec` marks finalization
+   (end of the speech window).
 2. Fetch `/api/sessions/:id/audio?from=X&to=Y`
 3. Create a blob URL from the response and play via a shared `<audio>` element
    (one per page, reused across lines)
@@ -84,11 +112,16 @@ active streaming line (not yet finalized) does not get a play button. Since the
 
 ### Audio offset data flow
 
-When rendering lines (both live `transcription.done` events and loaded sessions),
-the frontend needs `audioOffsetSec` for each line. This is included in:
+When rendering lines, the frontend needs `audioOffsetSec` for each line:
 
-- The `transcription.done` WebSocket event (for live lines)
-- The session JSON (for loaded/past sessions)
+- **Live lines:** the `transcription.done` WebSocket event includes
+  `audioOffsetSec` (added to the existing broadcast in `finalizeSentence()`)
+- **Loaded sessions:** `audioOffsetSec` is on each line in the session JSON
+- **`createLineElement()`** accepts `audioOffsetSec` as a parameter and renders
+  the play button when it is non-null
+
+The client-side session state (`currentSession.lines`) also stores
+`audioOffsetSec` so the click handler can look up adjacent line offsets.
 
 ## Data Model Changes
 
@@ -108,17 +141,36 @@ New field on each line:
 
 ### Session JSON
 
-No structural changes. The `.pcm` file is a sibling of the `.json` file in the
-`sessions/` directory.
+New field on the session object:
+
+```json
+{
+  "id": "sess_123",
+  "audioStartedAt": "2026-04-07T18:29:17.500Z",
+  ...
+}
+```
+
+The `.pcm` file is a sibling of the `.json` file in `sessions/`.
+
+## Interaction with Batch Pipeline
+
+The batch pipeline (`lib/batch.js`) also consumes audio chunks via
+`pushChunk()`. These are independent consumers — the `.pcm` file captures all
+audio contiguously, while the batch pipeline buffers and resets per sentence.
+No interference between them.
 
 ## Files Modified
 
 - `server.js` — open PCM file stream on first audio chunk, append chunks, track
-  `sessionAudioStartTime`, pass it to sessions module, add audio REST route
-- `lib/sessions.js` — accept `audioStartTime`, compute `audioOffsetSec` in
-  `addLine()`, delete `.pcm` on session remove
-- `public/app.js` — play button rendering, `<audio>` element management, click
-  handlers
+  `sessionAudioStartTime`, persist as `audioStartedAt`, compute offset in
+  `finalizeSentence()` and pass to `addLine()`, include `audioOffsetSec` in
+  `transcription.done` broadcast, add audio REST route, handle reconnection
+- `lib/sessions.js` — `addLine(text, audioOffsetSec)` stores offset on line,
+  `remove()` deletes `.pcm` file alongside `.json`
+- `public/app.js` — `createLineElement()` accepts `audioOffsetSec` and renders
+  play button, shared `<audio>` element, click handlers, client-side line state
+  includes `audioOffsetSec`
 - `public/index.html` — CSS for play button icon and playing state
 
 ## Not In Scope
