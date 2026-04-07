@@ -162,15 +162,23 @@ No interference between them.
 
 ## Files Modified
 
-- `server.js` — open PCM file stream on first audio chunk, append chunks, track
-  `sessionAudioStartTime`, persist as `audioStartedAt`, compute offset in
-  `finalizeSentence()` and pass to `addLine()`, include `audioOffsetSec` in
-  `transcription.done` broadcast, add audio REST route, handle reconnection
-- `lib/sessions.js` — `addLine(text, audioOffsetSec)` stores offset on line,
-  `remove()` deletes `.pcm` file alongside `.json`
-- `public/app.js` — `createLineElement()` accepts `audioOffsetSec` and renders
-  play button, shared `<audio>` element, click handlers, client-side line state
-  includes `audioOffsetSec`
+- `server.js` — open PCM file stream on first audio chunk (append mode if file
+  exists), append chunks, track `sessionAudioStartTime`, persist as
+  `audioStartedAt`, compute offset in `finalizeSentence()` and pass to
+  `addLine()`, include `audioOffsetSec` in `transcription.done` broadcast, add
+  audio REST route (before `RE_SESSION_ID` match), parse `from`/`to` query
+  params via `new URL()`, serve WAV using `pcmToWav(data, 16000)` from
+  `lib/audio.js`, return 404 when `.pcm` file missing
+- `lib/sessions.js` — `addLine(text, audioOffsetSec)` stores
+  `audioOffsetSec: audioOffsetSec ?? null` on the line object, `remove()`
+  deletes `.pcm` file alongside `.json`
+- `public/app.js` — specific change sites:
+  - `createLineElement(lineId, text, timestamp, audioOffsetSec)` — renders play
+    button when `audioOffsetSec` is non-null
+  - `renderSession()` — passes `line.audioOffsetSec` to `createLineElement()`
+  - `handleEvent` `transcription.done` case — reads `event.audioOffsetSec` and
+    stores it on the client-side line object pushed to `currentSession.lines`
+  - New: shared `<audio>` element, play/stop click handlers, blob URL management
 - `public/index.html` — CSS for play button icon and playing state
 
 ## Not In Scope
