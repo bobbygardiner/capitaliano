@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat, open } from 'node:fs/promises';
+import { createWriteStream, existsSync } from 'node:fs';
+import { pcmToWav } from './lib/audio.js';
 import { extname, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { config } from 'dotenv';
@@ -30,6 +32,7 @@ const PORT = 3000;
 // Route patterns (hoisted to avoid per-request regex compilation)
 const RE_SESSION_ID = /^\/api\/sessions\/(sess_\d+)$/;
 const RE_SESSION_END = /^\/api\/sessions\/(sess_\d+)\/end$/;
+const RE_SESSION_AUDIO = /^\/api\/sessions\/(sess_\d+)\/audio$/;
 
 // cleanText regexes (hoisted to avoid per-call compilation)
 const RE_MISSING_SPACE_CAMEL = /([a-zà-ž])([A-ZÀ-Ž])/g;
@@ -71,6 +74,47 @@ const server = createServer(async (req, res) => {
         const body = await readBody(req);
         const session = await sessions.create(body.name, body.context);
         return sendJson(res, 201, session);
+      }
+
+      const audioMatch = urlPath.match(RE_SESSION_AUDIO);
+      if (audioMatch && req.method === 'GET') {
+        const id = audioMatch[1];
+        const pcmPath = resolve('sessions', `${id}.pcm`);
+
+        let fileSize;
+        try {
+          const s = await stat(pcmPath);
+          fileSize = s.size;
+        } catch {
+          return sendJson(res, 404, { error: 'No audio for this session' });
+        }
+
+        const params = new URL(req.url, 'http://localhost').searchParams;
+        const fromSec = parseFloat(params.get('from')) || 0;
+        const toSec = params.get('to') !== null ? parseFloat(params.get('to')) : null;
+
+        let startByte = Math.floor(fromSec * 16000) * 2;
+        let endByte = toSec !== null
+          ? Math.floor(toSec * 16000) * 2
+          : fileSize;
+
+        // Clamp
+        startByte = Math.max(0, Math.min(startByte, fileSize));
+        endByte = Math.max(startByte, Math.min(endByte, fileSize));
+
+        const length = endByte - startByte;
+        const fd = await open(pcmPath, 'r');
+        const pcmData = Buffer.alloc(length);
+        await fd.read(pcmData, 0, length, startByte);
+        await fd.close();
+
+        const wav = pcmToWav(pcmData, 16000);
+        res.writeHead(200, {
+          'Content-Type': 'audio/wav',
+          'Content-Length': wav.length,
+        });
+        res.end(wav);
+        return;
       }
 
       const endMatch = urlPath.match(RE_SESSION_END);
@@ -165,6 +209,8 @@ wss.on('connection', async (ws) => {
   // Mistral connection is lazy — only created when first binary audio arrives
   let connection = null;
   let mistralReady = false;
+  let pcmStream = null;
+  let sessionAudioStartTime = null;
 
   // Phase 2 batch transcription — disabled by default.
   // Set CAPITO_PHASE2=1 env var to enable.
@@ -226,8 +272,11 @@ wss.on('connection', async (ws) => {
   function finalizeSentence(raw) {
     const text = cleanText(raw.trim());
     if (!text) return;
-    const lineId = sessions.addLine(text);
-    broadcast({ type: 'transcription.done', lineId, text });
+    const audioOffsetSec = sessionAudioStartTime
+      ? (Date.now() - sessionAudioStartTime) / 1000
+      : null;
+    const lineId = sessions.addLine(text, audioOffsetSec);
+    broadcast({ type: 'transcription.done', lineId, text, audioOffsetSec });
 
     if (lineId !== null) {
       const ctx = sessions.getActive()?.context;
@@ -307,6 +356,25 @@ wss.on('connection', async (ws) => {
   ws.on('message', (data, isBinary) => {
     if (!isBinary) return;
     audioCount++;
+
+    // Write audio to PCM file
+    const active = sessions.getActive();
+    if (active && !pcmStream) {
+      const pcmPath = resolve('sessions', `${active.id}.pcm`);
+      const flags = existsSync(pcmPath) ? 'a' : 'w';
+      pcmStream = createWriteStream(pcmPath, { flags });
+
+      // Restore or set audio start time
+      if (active.audioStartedAt) {
+        sessionAudioStartTime = new Date(active.audioStartedAt).getTime();
+      } else {
+        sessionAudioStartTime = Date.now();
+        sessions.setAudioStartedAt(new Date(sessionAudioStartTime).toISOString());
+      }
+      console.log(`[capito] PCM recording started: ${pcmPath} (${flags})`);
+    }
+    if (pcmStream) pcmStream.write(Buffer.from(data));
+
     if (pipeline) pipeline.pushChunk(data);
     if (!connection && !mistralReady && !mistralConnecting) {
       mistralConnecting = true;
@@ -323,6 +391,11 @@ wss.on('connection', async (ws) => {
     const elapsed = (audioCount * 0.256).toFixed(0);
     console.log(`[capito] Client disconnected after ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences`);
     clearInterval(statusTimer);
+    if (pcmStream) {
+      pcmStream.end();
+      pcmStream = null;
+      console.log('[capito] PCM recording stopped');
+    }
     sentenceBuffer = '';
     if (pipeline) await pipeline.flush();
     if (connection && !connection.isClosed) {
