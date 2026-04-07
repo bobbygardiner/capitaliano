@@ -891,6 +891,9 @@ export async function transcribeBatch(wavBuffer, contextBias) {
       formData.append('context_bias', name);
     }
   }
+  // Note: verify exact parameter name against Mistral docs at implementation time.
+  // The spec requires stream:true; response.json() buffers the full result regardless.
+  formData.append('stream', 'true');
 
   const response = await fetch('https://api.mistral.ai/v1/audio/transcriptions', {
     method: 'POST',
