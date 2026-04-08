@@ -13,6 +13,7 @@ import * as sessions from './lib/sessions.js';
 import { createBatchPipeline, parseContextBias, transcribeBatch } from './lib/batch.js';
 import { analyzeCommentary, splitAndAnalyze, mergeAndAnalyze } from './lib/translate.js';
 import { searchContext, buildContextString } from './lib/context-search.js';
+import * as contentTypes from './lib/content-types.js';
 
 config();
 
@@ -77,11 +78,31 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 201, session);
       }
 
+      if (urlPath === '/api/content-types' && req.method === 'GET') {
+        const types = await contentTypes.list();
+        return sendJson(res, 200, { types });
+      }
+
+      if (urlPath === '/api/content-types' && req.method === 'POST') {
+        const body = await readBody(req);
+        if (!body.label?.trim()) return sendJson(res, 400, { error: 'label is required' });
+        try {
+          const type = await contentTypes.add(body.label);
+          return sendJson(res, 201, type);
+        } catch (err) {
+          if (err.message.includes('already exists')) {
+            return sendJson(res, 409, { error: err.message });
+          }
+          console.error('[capitaliano] Content type creation failed:', err.message);
+          return sendJson(res, 502, { error: err.message });
+        }
+      }
+
       if (urlPath === '/api/context-search' && req.method === 'POST') {
         const body = await readBody(req);
         if (!body.query) return sendJson(res, 400, { error: 'query is required' });
         try {
-          const { data, costUsd } = await searchContext(body.query);
+          const { data, costUsd } = await searchContext(body.query, body.promptHint);
           const contextString = buildContextString(data);
           return sendJson(res, 200, { context: contextString, structured: data, costUsd });
         } catch (err) {
