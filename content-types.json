@@ -13,5 +13,10 @@
     "id": "general",
     "label": "General",
     "promptHint": "key people, topics, terminology, and proper nouns relevant to this content"
+  },
+  {
+    "id": "tennis-match",
+    "label": "Tennis Match",
+    "promptHint": "player names, match score, set number, court location, commentator names, player statistics, tournament name, match duration"
   }
 ]

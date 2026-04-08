@@ -1,100 +1,86 @@
 # Phase 3 Plan
 
-## 1. Two-Phase Transcription
+## 1. Two-Phase Transcription — DISCARDED
+
+Attempted and tested live. Batch upgrades were sometimes worse than realtime
+(e.g., "Akancalhanoglu" → "accanciare a N'dicka" instead of keeping Calhanoglu).
+The batch model transcribes independently and can produce completely different,
+worse text for garbled audio. Discarded in favour of single-phase realtime with
+better context biasing (see section 3).
+
+## 2. Audio Preservation + Playback — IMPLEMENTED
+
+Already built. Server records raw PCM to `sessions/{id}.pcm`, serves WAV clips
+via `GET /api/sessions/:id/audio?from=X&to=Y`. Playback UI in the frontend.
+
+## 3. Web Search Context Biasing
 
 ### Architecture
-```
-Audio chunks from browser
-  │
-  ├─► Phase 1: Voxtral Realtime (as now)
-  │     → fast deltas, no context bias
-  │     → immediate Haiku translation (rough)
-  │     → text + translation on screen within ~2s
-  │
-  └─► Phase 2: Voxtral Batch Streaming (new)
-        → accumulate ~5s audio chunks
-        → POST to batch API with contextBias (squad names)
-        → better transcription with correct player names
-        → second Haiku translation (refined)
-        → replaces Phase 1 text + translation on screen
-```
+- User types a session name (e.g. "PSG vs Liverpool, Champions League")
+- Optional "Search for context" toggle on session creation form
+- When enabled, server fires a single Claude Haiku API call with `web_search` tool
+- Haiku searches the web for match details: full matchday squads, managers, venue
+- Returns structured JSON which auto-populates the session context
+- Squad names fed into Haiku translation/analysis prompts as context
 
-### UX
-- User sees rough text immediately (never waiting)
-- Text quietly upgrades 5-10 seconds later with corrected names + better entities/idioms
-- Like progressive JPEG — blurry then sharp
-- Visual indicator during upgrade (subtle shimmer or fade transition)
+### Why Web Search Instead of Football APIs
+- Works for any content, not just football — tennis, podcasts, news, cooking shows
+- No external API dependencies or API keys to manage
+- Single provider (Anthropic) already in the stack
+- Gets real, current data (actual matchday squads, not stale training data)
 
 ### API Details
-- Batch endpoint: `POST /v1/audio/transcriptions` with `stream: true`
-- Model: `voxtral-mini-transcribe-v2-2602` (batch model, NOT realtime)
-- `contextBias`: array of up to 100 player/team/coach names
-- Audio format: same PCM16 16kHz chunks, accumulated into ~5 second windows
+- Model: `claude-haiku-4-5` with `web_search_20260209` tool (`allowed_callers: ["direct"]`)
+- Single call at session start, ~$0.05-0.17 depending on search depth
+- Prompt asks for full matchday squad (starting XI + bench), managers, competition, venue
+- Response is structured JSON — no post-processing needed
+
+### UX
+- Session creation form: existing name + context fields
+- New toggle: "Search for context" (default off)
+- When toggled on and session name entered: "Searching..." loading state
+- Results auto-populate the context textarea (editable before starting)
+- User can review, tweak, or clear before hitting start
+- When toggled off: works exactly as now (manual context or none)
+
+### Prompt Template
+```
+I'm building context for a live Italian transcription tool.
+Search for the full matchday squads (not just starting XI — include
+substitutes) for this match: "{sessionName}"
+
+Return ONLY valid JSON with this structure:
+{
+  "match": "Team A vs Team B",
+  "competition": "...",
+  "venue": "...",
+  "date": "...",
+  "managers": ["...", "..."],
+  "teams": [
+    { "name": "...", "squad": ["Player Name", "..."] }
+  ]
+}
+
+Include the full matchday squad (starting XI + bench) for each team.
+Use the player names as they would appear on official teamsheets.
+Do not include generic vocabulary or anything not sourced from the
+web search.
+```
 
 ### Cost
-- 2x Mistral (realtime + batch) + 2x Haiku per line
-- ~$0.005/line instead of $0.002 — under $2 for a full match
-
-### Implementation Notes
-- Buffer audio chunks on the server in ~5s windows
-- POST each window to batch API while realtime continues
-- Match batch results to existing lines by timestamp alignment
-- Send `analysis.upgrade` event to browser to replace Phase 1 content
-- Need to handle the case where Phase 2 splits sentences differently than Phase 1
-
-## 2. Audio Preservation + Playback
-
-### Architecture
-- Save raw audio as a single file per session (opus/mp3 compressed)
-- Each line's `timestamp` maps to a position in the audio file
-- Browser can request audio clips: `GET /api/sessions/:id/audio?from=120.5&to=123.0`
-
-### UX
-- Play button on each line → plays the ~3 second audio clip
-- Play button on idioms in vocab tab → hear the commentator say it
-- Waveform visualization (stretch goal)
-
-### Storage
-- Raw PCM16 16kHz mono = ~1.9MB/min, ~170MB per match
-- Compressed opus = ~170KB/min, ~15MB per match
-- Store in `sessions/` alongside the JSON file
-
-### Implementation Notes
-- Server accumulates audio chunks and writes to a file
-- Use ffmpeg to compress to opus on session end (or stream-compress live)
-- Audio clip extraction via ffmpeg: `ffmpeg -ss 120.5 -t 2.5 -i session.opus pipe:1`
-- Browser plays via `<audio>` element with blob URL
-
-## 3. Auto-Fetch Squad Rosters
-
-### Architecture
-- User enters two team names when creating a session
-- Server fetches squad rosters from football-data.org or similar API
-- Populates the session context automatically
-- Squad names fed into both Phase 2 contextBias and Haiku prompt
-
-### UX
-- Session creation form: two team name inputs with autocomplete
-- "Fetching squads..." loading state
-- Fetched squad shown in the context textarea (editable)
-- User can add/remove names before starting
-
-### API Options
-- football-data.org: free tier, squad endpoints, Serie A coverage
-- API-Football (RapidAPI): broader coverage, more data
-- Need: team search by name → squad roster with player names + positions
+- ~$0.05-0.17 per session (one-time, at creation)
+- Opt-in only — zero cost if toggle is off
+- Bulk of cost is input tokens from web search results
 
 ## 4. Testing
 
 ### Test Fixture
 - Inter-Roma highlights clip (test/fixtures/italian-commentary.mp3)
 - Actual matchday squad context to be provided by user for accurate testing
-- Two-phase comparison: Phase 1 only vs Phase 1+2 output quality
 
 ### Metrics to Track
-- Phase 1 latency (time to first text)
-- Phase 2 latency (time to upgrade)
-- Entity correction rate (Phase 1 vs Phase 2)
-- Translation quality (with/without contextBias)
-- Cost per line (single vs two-phase)
-- Audio file sizes
+- Web search context quality (are the squads correct and complete?)
+- Entity recognition rate with vs without web search context
+- Translation quality with vs without context
+- Web search cost per session
+- Web search latency (time from toggle to populated context)
