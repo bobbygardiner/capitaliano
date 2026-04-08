@@ -12,11 +12,12 @@ import {
 import * as sessions from './lib/sessions.js';
 import { createBatchPipeline, parseContextBias, transcribeBatch } from './lib/batch.js';
 import { analyzeCommentary, splitAndAnalyze, mergeAndAnalyze } from './lib/translate.js';
+import { searchContext, buildContextString } from './lib/context-search.js';
 
 config();
 
 if (!process.env.MISTRAL_API_KEY) {
-  console.error('[capito] MISTRAL_API_KEY is not set. Copy .env.example to .env and add your key.');
+  console.error('[capitaliano] MISTRAL_API_KEY is not set. Copy .env.example to .env and add your key.');
   process.exit(1);
 }
 
@@ -74,6 +75,19 @@ const server = createServer(async (req, res) => {
         const body = await readBody(req);
         const session = await sessions.create(body.name, body.context);
         return sendJson(res, 201, session);
+      }
+
+      if (urlPath === '/api/context-search' && req.method === 'POST') {
+        const body = await readBody(req);
+        if (!body.query) return sendJson(res, 400, { error: 'query is required' });
+        try {
+          const { data, costUsd } = await searchContext(body.query);
+          const contextString = buildContextString(data);
+          return sendJson(res, 200, { context: contextString, structured: data, costUsd });
+        } catch (err) {
+          console.error('[capitaliano] Context search failed:', err.message);
+          return sendJson(res, 502, { error: 'Context search failed: ' + err.message });
+        }
       }
 
       const audioMatch = urlPath.match(RE_SESSION_AUDIO);
@@ -148,7 +162,7 @@ const server = createServer(async (req, res) => {
 
       sendJson(res, 404, { error: 'Not found' });
     } catch (err) {
-      console.error('[capito] API error:', err.message);
+      console.error('[capitaliano] API error:', err.message);
       const status = err.message.includes('already active') ? 409 : 500;
       sendJson(res, status, { error: err.message });
     }
@@ -191,14 +205,14 @@ function broadcast(data) {
 // Prevent EPIPE / unhandled rejection crashes
 process.on('unhandledRejection', (err) => {
   if (err?.code === 'EPIPE' || err?.code === 'ERR_STREAM_DESTROYED') {
-    console.error('[capito] Suppressed write error:', err.code);
+    console.error('[capitaliano] Suppressed write error:', err.code);
     return;
   }
-  console.error('[capito] Unhandled rejection:', err);
+  console.error('[capitaliano] Unhandled rejection:', err);
 });
 
 wss.on('connection', async (ws) => {
-  console.log('[capito] Client connected');
+  console.log('[capitaliano] Client connected');
 
   // Send active session info if one exists
   const active = sessions.getActive();
@@ -303,11 +317,11 @@ wss.on('connection', async (ws) => {
       });
       mistralReady = true;
       mistralConnecting = false;
-      console.log('[capito] Mistral connected');
+      console.log('[capitaliano] Mistral connected');
 
       // Forward Mistral events with sentence segmentation
       for await (const event of connection) {
-        if (ws.readyState !== ws.OPEN) { console.log('[capito] WS closed, stopping Mistral event loop'); break; }
+        if (ws.readyState !== ws.OPEN) { console.log('[capitaliano] WS closed, stopping Mistral event loop'); break; }
         eventCount++;
         lastEventTime = Date.now();
         if (event.type === 'transcription.text.delta') {
@@ -331,19 +345,19 @@ wss.on('connection', async (ws) => {
             sentenceBuffer = '';
           }
         } else if (event.type === 'transcription.done') {
-          console.log('[capito] Mistral stream ended (transcription.done)');
+          console.log('[capitaliano] Mistral stream ended (transcription.done)');
           if (sentenceBuffer.trim()) {
             sentenceCount++;
             finalizeSentence(sentenceBuffer);
             sentenceBuffer = '';
           }
         } else {
-          console.log('[capito] Mistral event:', event.type);
+          console.log('[capitaliano] Mistral event:', event.type);
         }
       }
-      console.log('[capito] Mistral event loop ended — total events:', eventCount, 'sentences:', sentenceCount);
+      console.log('[capitaliano] Mistral event loop ended — total events:', eventCount, 'sentences:', sentenceCount);
     } catch (err) {
-      console.error('[capito] Mistral error:', err.message, err.code || '');
+      console.error('[capitaliano] Mistral error:', err.message, err.code || '');
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: String(err.message || err) }));
       }
@@ -353,7 +367,7 @@ wss.on('connection', async (ws) => {
       mistralReady = false;
       mistralConnecting = false;
       if (ws.readyState === ws.OPEN) {
-        console.log('[capito] Mistral disconnected — will reconnect on next audio chunk');
+        console.log('[capitaliano] Mistral disconnected — will reconnect on next audio chunk');
       }
     }
   }
@@ -370,7 +384,7 @@ wss.on('connection', async (ws) => {
     if (audioCount > 0) {
       const elapsed = (audioCount * 0.256).toFixed(0);
       const silenceSecs = lastEventTime ? ((Date.now() - lastEventTime) / 1000).toFixed(0) : 'n/a';
-      console.log(`[capito] Status: ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences, ${silenceSecs}s since last event, mistral: ${mistralReady ? 'ready' : 'connecting'}`);
+      console.log(`[capitaliano] Status: ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences, ${silenceSecs}s since last event, mistral: ${mistralReady ? 'ready' : 'connecting'}`);
     }
   }, 60000);
 
@@ -392,7 +406,7 @@ wss.on('connection', async (ws) => {
         sessionAudioStartTime = Date.now();
         sessions.setAudioStartedAt(new Date(sessionAudioStartTime).toISOString());
       }
-      console.log(`[capito] PCM recording started: ${pcmPath} (${flags})`);
+      console.log(`[capitaliano] PCM recording started: ${pcmPath} (${flags})`);
     }
     if (pcmStream) {
       const buf = Buffer.from(data);
@@ -403,7 +417,7 @@ wss.on('connection', async (ws) => {
     if (pipeline) pipeline.pushChunk(data);
     if (!connection && !mistralReady && !mistralConnecting) {
       mistralConnecting = true;
-      console.log('[capito] First audio chunk received, connecting to Mistral...');
+      console.log('[capitaliano] First audio chunk received, connecting to Mistral...');
       startMistral();
     }
     if (mistralReady && connection && !connection.isClosed) {
@@ -414,19 +428,19 @@ wss.on('connection', async (ws) => {
   // Cleanup on disconnect
   ws.on('close', async () => {
     const elapsed = (audioCount * 0.256).toFixed(0);
-    console.log(`[capito] Client disconnected after ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences`);
+    console.log(`[capitaliano] Client disconnected after ${elapsed}s audio, ${eventCount} events, ${sentenceCount} sentences`);
     clearInterval(statusTimer);
     if (pcmStream) {
       pcmStream.end();
       pcmStream = null;
-      console.log('[capito] PCM recording stopped');
+      console.log('[capitaliano] PCM recording stopped');
     }
     if (captureDeltas && capturedDeltas.length > 0) {
       const activeSession = sessions.getActive();
       const capturePath = resolve('test/fixtures', `deltas-${activeSession?.id || 'unknown'}.json`);
       const { writeFile: wf } = await import('node:fs/promises');
       await wf(capturePath, JSON.stringify({ deltas: capturedDeltas, totalPcmBytes: pcmBytesWritten }, null, 2));
-      console.log(`[capito] Captured ${capturedDeltas.length} deltas to ${capturePath}`);
+      console.log(`[capitaliano] Captured ${capturedDeltas.length} deltas to ${capturePath}`);
     }
     sentenceBuffer = '';
     if (pipeline) await pipeline.flush();
@@ -441,7 +455,7 @@ wss.on('connection', async (ws) => {
 await sessions.init();
 
 server.listen(PORT, () => {
-  console.log(`[capito] Running at http://localhost:${PORT}`);
+  console.log(`[capitaliano] Running at http://localhost:${PORT}`);
 });
 
 // Graceful shutdown
@@ -450,5 +464,5 @@ async function gracefulShutdown() {
   process.exit(0);
 }
 
-process.on('SIGINT', async () => { console.log('\n[capito] Shutting down...'); await gracefulShutdown(); });
+process.on('SIGINT', async () => { console.log('\n[capitaliano] Shutting down...'); await gracefulShutdown(); });
 process.on('SIGTERM', gracefulShutdown);
