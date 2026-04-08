@@ -31,6 +31,11 @@ const saveContextBtn = document.getElementById('save-context-btn');
 const cancelContextBtn = document.getElementById('cancel-context-btn');
 const contextSearchToggle = document.getElementById('context-search-toggle');
 const contextSearchLabel = document.getElementById('context-search-label');
+const contentTypeSelect = document.getElementById('content-type-select');
+const addTypeRow = document.getElementById('add-type-row');
+const addTypeInput = document.getElementById('add-type-input');
+const addTypeBtn = document.getElementById('add-type-btn');
+const cancelTypeBtn = document.getElementById('cancel-type-btn');
 
 // --- State ---
 let currentSession = null;
@@ -41,6 +46,37 @@ let activeLineEl = null;
 let waitingEl = null;
 let lineElements = new Map(); // lineId -> DOM element
 let sessionCostUsd = 0;
+let contentTypes = [];
+
+// --- Content types ---
+
+async function loadContentTypes() {
+  try {
+    const res = await fetch('/api/content-types');
+    const data = await res.json();
+    contentTypes = data.types || [];
+    renderContentTypeSelect();
+  } catch (err) {
+    console.error('[capitaliano] Failed to load content types:', err);
+  }
+}
+
+function renderContentTypeSelect() {
+  contentTypeSelect.innerHTML = '';
+  for (const type of contentTypes) {
+    const option = document.createElement('option');
+    option.value = type.id;
+    option.textContent = type.label;
+    option.dataset.promptHint = type.promptHint;
+    contentTypeSelect.appendChild(option);
+  }
+  const addOption = document.createElement('option');
+  addOption.value = '__add_new__';
+  addOption.textContent = '+ Add new...';
+  contentTypeSelect.appendChild(addOption);
+}
+
+loadContentTypes();
 
 // --- Sessions panel ---
 
@@ -170,6 +206,7 @@ newSessionBtn.addEventListener('click', () => {
     sessionContextInput.value = '';
     contextSearchToggle.checked = false;
     contextSearchLabel.textContent = 'Search for context';
+    addTypeRow.classList.add('hidden');
     sessionNameInput.focus();
   }
 });
@@ -225,7 +262,7 @@ contextSearchToggle.addEventListener('change', async () => {
     const res = await fetch('/api/context-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, promptHint: contentTypeSelect.selectedOptions[0]?.dataset.promptHint }),
     });
     if (!res.ok) throw new Error('Search failed');
     const data = await res.json();
@@ -239,6 +276,57 @@ contextSearchToggle.addEventListener('change', async () => {
     contextSearchLabel.classList.remove('searching');
     contextSearchToggle.disabled = false;
   }
+});
+
+contentTypeSelect.addEventListener('change', () => {
+  if (contentTypeSelect.value === '__add_new__') {
+    addTypeRow.classList.remove('hidden');
+    addTypeInput.value = '';
+    addTypeInput.focus();
+    if (contentTypes.length > 0) {
+      contentTypeSelect.value = contentTypes[0].id;
+    }
+  }
+});
+
+async function addContentType() {
+  const label = addTypeInput.value.trim();
+  if (!label) return;
+
+  addTypeBtn.disabled = true;
+  addTypeBtn.textContent = 'Adding...';
+
+  try {
+    const res = await fetch('/api/content-types', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add type');
+    }
+    const newType = await res.json();
+    contentTypes.push(newType);
+    renderContentTypeSelect();
+    contentTypeSelect.value = newType.id;
+    addTypeRow.classList.add('hidden');
+  } catch (err) {
+    console.error('[capitaliano] Failed to add content type:', err);
+    addTypeInput.style.borderColor = 'var(--accent)';
+    setTimeout(() => { addTypeInput.style.borderColor = ''; }, 2000);
+  } finally {
+    addTypeBtn.disabled = false;
+    addTypeBtn.textContent = 'Add';
+  }
+}
+
+addTypeBtn.addEventListener('click', addContentType);
+addTypeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addContentType();
+});
+cancelTypeBtn.addEventListener('click', () => {
+  addTypeRow.classList.add('hidden');
 });
 
 async function loadSession(id) {
