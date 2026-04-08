@@ -1,4 +1,4 @@
-# CLAUDE.md — Capito
+# CLAUDE.md — Capitaliano
 
 ## What this project is
 A personal live transcription and translation tool for Italian TV audio. A Node.js
