@@ -787,6 +787,8 @@ function collectVocab() {
         meaning: idiom.meaning,
         context: line.text,
         timestamp: line.timestamp,
+        lineId: line.lineId,
+        hasAudio: line.audioOffsetSec != null,
       });
     }
   }
@@ -805,11 +807,17 @@ function renderVocab() {
     const el = document.createElement('div');
     el.className = 'vocab-item';
     el.innerHTML = `
-      <div class="vocab-expression">${escapeHtml(item.expression)}</div>
+      <div class="vocab-expression">${item.hasAudio ? '<span class="vocab-play-btn" title="Play audio">\u25B6</span> ' : ''}${escapeHtml(item.expression)}</div>
       <div class="vocab-meaning">${escapeHtml(item.meaning)}</div>
       <div class="vocab-context">"…${escapeHtml(item.context.slice(0, 120))}${item.context.length > 120 ? '…' : ''}"</div>
       <div class="vocab-time">${formatElapsed(item.timestamp)}</div>
     `;
+    if (item.hasAudio) {
+      el.querySelector('.vocab-play-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        playLineAudio(item.lineId);
+      });
+    }
     vocabList.appendChild(el);
   }
 }
