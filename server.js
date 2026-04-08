@@ -302,6 +302,7 @@ wss.on('connection', async (ws) => {
         targetStreamingDelayMs: 480,
       });
       mistralReady = true;
+      mistralConnecting = false;
       console.log('[capito] Mistral connected');
 
       // Forward Mistral events with sentence segmentation
@@ -345,6 +346,14 @@ wss.on('connection', async (ws) => {
       console.error('[capito] Mistral error:', err.message, err.code || '');
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'error', message: String(err.message || err) }));
+      }
+    } finally {
+      // Reset state so next audio chunk triggers reconnection
+      connection = null;
+      mistralReady = false;
+      mistralConnecting = false;
+      if (ws.readyState === ws.OPEN) {
+        console.log('[capito] Mistral disconnected — will reconnect on next audio chunk');
       }
     }
   }
