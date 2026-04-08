@@ -44,9 +44,10 @@ Request: `{ "label": "Opera" }`
 
 Server:
 1. Slugifies label to create ID
-2. Makes a Haiku call to generate prompt hint from the label
-3. Appends new type to `content-types.json`
-4. Returns the new type object `{ id, label, promptHint }`
+2. Returns 409 if a type with the same ID already exists
+3. Makes a Haiku call to generate prompt hint from the label
+4. Appends new type to `content-types.json`
+5. Returns the new type object `{ id, label, promptHint }`
 
 ### `POST /api/context-search` (modified)
 
@@ -61,23 +62,29 @@ Search for context about: "{query}"
 
 Find: {promptHint}
 
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON. Adapt the structure to the content type. For example, a football match might use:
 {
   "match": "...",
   "competition": "...",
   "venue": "...",
-  "date": "...",
   "managers": ["..."],
-  "teams": [
-    { "name": "...", "squad": ["Player Name", "..."] }
-  ]
+  "teams": [{ "name": "...", "squad": ["..."] }]
 }
 
-Use the player/person names as they would appear on official sources.
+But a cooking show might use:
+{
+  "show": "...",
+  "host": "...",
+  "dishes": ["..."],
+  "ingredients": ["..."]
+}
+
+Use whatever fields best capture the context for this content type.
+Use names as they would appear on official sources.
 Do not include generic vocabulary or anything not sourced from the web search.
 ```
 
-Note: the JSON structure is a suggestion to the LLM — for non-football content, Haiku will adapt the fields naturally (e.g. a cooking show won't have "managers" or "teams"). The `buildContextString` function already handles missing fields gracefully.
+Note: because the JSON structure varies by content type, `buildContextString` needs a generic fallback that iterates over all top-level keys — not just the football-specific fields. Arrays get joined with commas, strings render as-is, objects with `name`/`squad` fields use the existing team format.
 
 ## Frontend
 
