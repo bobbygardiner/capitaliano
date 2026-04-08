@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Capito</title>
+  <title>Capitaliano</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -743,6 +743,66 @@
       border: 1px solid var(--border-strong);
     }
 
+    .context-search-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .context-search-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      user-select: none;
+    }
+
+    .context-search-toggle {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .context-search-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--border-strong);
+      border-radius: 10px;
+      transition: background 0.2s var(--ease-out);
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background: var(--bg);
+      border-radius: 50%;
+      transition: transform 0.2s var(--ease-out);
+    }
+
+    .context-search-toggle input:checked + .toggle-slider {
+      background: var(--accent);
+    }
+
+    .context-search-toggle input:checked + .toggle-slider::before {
+      transform: translateX(16px);
+    }
+
+    .context-search-label.searching {
+      color: var(--accent);
+    }
+
     /* --- Edit context modal --- */
     .edit-context-backdrop {
       position: fixed;
@@ -932,6 +992,13 @@
     </div>
     <div id="new-session-form" class="new-session-form hidden">
       <input type="text" id="session-name-input" placeholder="e.g. Napoli vs Milan" />
+      <div class="context-search-row">
+        <label class="context-search-toggle">
+          <input type="checkbox" id="context-search-toggle" />
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="context-search-label" id="context-search-label">Search for context</span>
+      </div>
       <textarea id="session-context-input" rows="4" placeholder="Paste squad names, coaches, stadium (optional)"></textarea>
       <div class="new-session-actions">
         <button id="create-session-btn">Create</button>
