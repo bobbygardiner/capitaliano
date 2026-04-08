@@ -210,7 +210,11 @@ wss.on('connection', async (ws) => {
   let connection = null;
   let mistralReady = false;
   let pcmStream = null;
+  let pcmBytesWritten = 0;
   let sessionAudioStartTime = null;
+  // Delta capture for segmentation evaluation (enabled via CAPITO_CAPTURE_DELTAS=1)
+  const captureDeltas = process.env.CAPITO_CAPTURE_DELTAS === '1';
+  const capturedDeltas = [];
 
   // Phase 2 batch transcription — disabled by default.
   // Set CAPITO_PHASE2=1 env var to enable.
@@ -247,7 +251,7 @@ wss.on('connection', async (ws) => {
 
   // Sentence accumulator
   let sentenceBuffer = '';
-  const MIN_SENTENCE_LENGTH = 40;
+  const MIN_SENTENCE_LENGTH = 100;
   const SENTENCE_END = /[.!?]\s*$/;
 
   // Clean up Mistral transcription artifacts
@@ -272,8 +276,8 @@ wss.on('connection', async (ws) => {
   function finalizeSentence(raw) {
     const text = cleanText(raw.trim());
     if (!text) return;
-    const audioOffsetSec = sessionAudioStartTime
-      ? (Date.now() - sessionAudioStartTime) / 1000
+    const audioOffsetSec = pcmBytesWritten > 0
+      ? pcmBytesWritten / 32000
       : null;
     const lineId = sessions.addLine(text, audioOffsetSec);
     broadcast({ type: 'transcription.done', lineId, text, audioOffsetSec });
@@ -307,6 +311,14 @@ wss.on('connection', async (ws) => {
         lastEventTime = Date.now();
         if (event.type === 'transcription.text.delta') {
           broadcast(event);
+          if (captureDeltas) {
+            capturedDeltas.push({
+              text: event.text,
+              pcmBytes: pcmBytesWritten,
+              audioSec: pcmBytesWritten / 32000,
+              wallMs: Date.now(),
+            });
+          }
           sentenceBuffer += event.text;
           if (sentenceBuffer.length >= MIN_SENTENCE_LENGTH && SENTENCE_END.test(sentenceBuffer)) {
             sentenceCount++;
@@ -373,7 +385,11 @@ wss.on('connection', async (ws) => {
       }
       console.log(`[capito] PCM recording started: ${pcmPath} (${flags})`);
     }
-    if (pcmStream) pcmStream.write(Buffer.from(data));
+    if (pcmStream) {
+      const buf = Buffer.from(data);
+      pcmStream.write(buf);
+      pcmBytesWritten += buf.length;
+    }
 
     if (pipeline) pipeline.pushChunk(data);
     if (!connection && !mistralReady && !mistralConnecting) {
@@ -395,6 +411,13 @@ wss.on('connection', async (ws) => {
       pcmStream.end();
       pcmStream = null;
       console.log('[capito] PCM recording stopped');
+    }
+    if (captureDeltas && capturedDeltas.length > 0) {
+      const activeSession = sessions.getActive();
+      const capturePath = resolve('test/fixtures', `deltas-${activeSession?.id || 'unknown'}.json`);
+      const { writeFile: wf } = await import('node:fs/promises');
+      await wf(capturePath, JSON.stringify({ deltas: capturedDeltas, totalPcmBytes: pcmBytesWritten }, null, 2));
+      console.log(`[capito] Captured ${capturedDeltas.length} deltas to ${capturePath}`);
     }
     sentenceBuffer = '';
     if (pipeline) await pipeline.flush();
