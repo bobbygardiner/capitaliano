@@ -1,0 +1,17 @@
+[
+  {
+    "id": "football-match",
+    "label": "Football Match",
+    "promptHint": "full matchday squads (starting XI + bench), managers, competition, venue"
+  },
+  {
+    "id": "football-podcast",
+    "label": "Football Podcast",
+    "promptHint": "host names, guest names, topics discussed, teams/players likely mentioned"
+  },
+  {
+    "id": "general",
+    "label": "General",
+    "promptHint": "key people, topics, terminology, and proper nouns relevant to this content"
+  }
+]
