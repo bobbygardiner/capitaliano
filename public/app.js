@@ -29,6 +29,8 @@ const editContextName = document.getElementById('edit-context-name');
 const editContextTextarea = document.getElementById('edit-context-textarea');
 const saveContextBtn = document.getElementById('save-context-btn');
 const cancelContextBtn = document.getElementById('cancel-context-btn');
+const contextSearchToggle = document.getElementById('context-search-toggle');
+const contextSearchLabel = document.getElementById('context-search-label');
 
 // --- State ---
 let currentSession = null;
@@ -62,7 +64,7 @@ async function loadSessionsList() {
     const data = await res.json();
     renderSessionsList(data.sessions || []);
   } catch (err) {
-    console.error('[capito] Failed to load sessions:', err);
+    console.error('[capitaliano] Failed to load sessions:', err);
   }
 }
 
@@ -102,7 +104,7 @@ function renderSessionsList(sessions) {
           }
           loadSessionsList();
         } catch (err) {
-          console.error('[capito] Failed to end session:', err);
+          console.error('[capitaliano] Failed to end session:', err);
         }
       });
     }
@@ -142,7 +144,7 @@ function renderSessionsList(sessions) {
           }
           loadSessionsList();
         } catch (err) {
-          console.error('[capito] Failed to delete session:', err);
+          console.error('[capitaliano] Failed to delete session:', err);
         }
       });
     }
@@ -166,6 +168,8 @@ newSessionBtn.addEventListener('click', () => {
   if (!newSessionForm.classList.contains('hidden')) {
     sessionNameInput.value = '';
     sessionContextInput.value = '';
+    contextSearchToggle.checked = false;
+    contextSearchLabel.textContent = 'Search for context';
     sessionNameInput.focus();
   }
 });
@@ -203,6 +207,38 @@ createSessionBtn.addEventListener('click', async () => {
 
 cancelSessionBtn.addEventListener('click', () => {
   newSessionForm.classList.add('hidden');
+});
+
+contextSearchToggle.addEventListener('change', async () => {
+  if (!contextSearchToggle.checked) return;
+  const query = sessionNameInput.value.trim();
+  if (!query) {
+    contextSearchToggle.checked = false;
+    return;
+  }
+
+  contextSearchLabel.textContent = 'Searching...';
+  contextSearchLabel.classList.add('searching');
+  contextSearchToggle.disabled = true;
+
+  try {
+    const res = await fetch('/api/context-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    if (!res.ok) throw new Error('Search failed');
+    const data = await res.json();
+    sessionContextInput.value = data.context;
+    contextSearchLabel.textContent = `Context found ($${data.costUsd.toFixed(2)})`;
+  } catch (err) {
+    console.error('[capitaliano] Context search failed:', err);
+    contextSearchLabel.textContent = 'Search failed';
+    contextSearchToggle.checked = false;
+  } finally {
+    contextSearchLabel.classList.remove('searching');
+    contextSearchToggle.disabled = false;
+  }
 });
 
 async function loadSession(id) {
@@ -261,7 +297,7 @@ async function loadDevices() {
       micSelect.appendChild(option);
     }
   } catch (err) {
-    console.error('[capito] Device enumeration failed:', err);
+    console.error('[capitaliano] Device enumeration failed:', err);
     showError('Microphone access denied — check browser permissions');
   }
 }
@@ -639,7 +675,7 @@ function handleEvent(event) {
     }
 
     case 'transcription.language':
-      console.log('[capito] Detected language:', event.audioLanguage);
+      console.log('[capitaliano] Detected language:', event.audioLanguage);
       break;
 
     case 'error': {
@@ -1018,7 +1054,7 @@ async function playLineAudio(lineId) {
 
     await audio.play();
   } catch (err) {
-    console.error('[capito] Audio playback error:', err);
+    console.error('[capitaliano] Audio playback error:', err);
     stopAudioPlayback();
   }
 }
@@ -1034,7 +1070,7 @@ async function initActiveSession() {
       await loadSession(active.id);
     }
   } catch (err) {
-    console.error('[capito] Failed to check active session:', err);
+    console.error('[capitaliano] Failed to check active session:', err);
   }
 }
 
@@ -1046,7 +1082,7 @@ function connectPersistentWs() {
   persistentWs = new WebSocket(`${wsProtocol}//${location.host}`);
   persistentWs.binaryType = 'arraybuffer';
   persistentWs.onmessage = (e) => {
-    try { handleEvent(JSON.parse(e.data)); } catch (err) { console.warn('[capito] WS parse error:', err.message); }
+    try { handleEvent(JSON.parse(e.data)); } catch (err) { console.warn('[capitaliano] WS parse error:', err.message); }
   };
   persistentWs.onclose = () => {
     persistentWs = null;
