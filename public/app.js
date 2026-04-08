@@ -380,7 +380,11 @@ function applySegments(lineEl, segments, entities, idioms) {
   const container = document.createElement('div');
   container.className = 'line-segments';
 
-  for (const seg of segments) {
+  for (let si = 0; si < segments.length; si++) {
+    const seg = segments[si];
+    // Add space between adjacent segment pairs
+    if (si > 0) container.appendChild(document.createTextNode(' '));
+
     const pair = document.createElement('div');
     pair.className = 'segment-pair';
 
