@@ -58,4 +58,32 @@ describe('buildContextString', () => {
     const result = buildContextString({});
     assert.equal(typeof result, 'string');
   });
+
+  it('handles non-football content with arbitrary keys', () => {
+    const data = {
+      show: 'Masterchef Italia',
+      host: 'Bruno Barbieri',
+      dishes: ['risotto', 'ossobuco'],
+      ingredients: ['saffron', 'veal'],
+    };
+
+    const result = buildContextString(data);
+    assert.ok(result.includes('Masterchef Italia'));
+    assert.ok(result.includes('Bruno Barbieri'));
+    assert.ok(result.includes('risotto'));
+    assert.ok(result.includes('saffron'));
+  });
+
+  it('still handles football format with teams array', () => {
+    const data = {
+      match: 'Inter vs Roma',
+      teams: [
+        { name: 'Inter', squad: ['Lautaro', 'Barella'] },
+      ],
+    };
+
+    const result = buildContextString(data);
+    assert.ok(result.includes('Inter vs Roma'));
+    assert.ok(result.includes('Inter: Lautaro, Barella'));
+  });
 });
