@@ -1,4 +1,4 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -6,13 +6,6 @@ import { resolve } from 'node:path';
 
 const BASE = 'http://localhost:3000';
 const SAVED_PATH = resolve('sessions', 'saved-vocab.json');
-
-async function snapshotSaved() {
-  if (!existsSync(SAVED_PATH)) return { entries: [] };
-  return JSON.parse(await readFile(SAVED_PATH, 'utf-8'));
-}
-
-let originalContents;
 
 // Note: GET/POST reflect in-memory state immediately — the 5s flush timer
 // only affects on-disk persistence, not test visibility.
@@ -28,18 +21,28 @@ function source(overrides = {}) {
   };
 }
 
+async function removeTestExpression(expression) {
+  try {
+    await fetch(`${BASE}/api/saved-vocab/remove`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expression }),
+    });
+  } catch {}
+}
+
+let originalContents;
+
 before(async () => {
   originalContents = existsSync(SAVED_PATH) ? await readFile(SAVED_PATH, 'utf-8') : null;
-  // Reset saved-vocab file to a known empty state
-  await writeFile(SAVED_PATH, JSON.stringify({ entries: [] }, null, 2));
-  // Ask the server to reload by hitting GET (no-op reload; server already loaded on boot).
-  // The integration test relies on fresh server state — skip if entries already present.
 });
 
 after(async () => {
-  // Clean up any entries we added so UI isn't polluted
-  const snap = await snapshotSaved();
-  for (const e of snap.entries) {
+  // Clean up any TEST_ entries via the API so in-memory state is cleared
+  // regardless of flush-timer state.
+  const res = await fetch(`${BASE}/api/saved-vocab`);
+  const { entries } = await res.json();
+  for (const e of entries) {
     if (e.expression?.startsWith('TEST_')) {
       await fetch(`${BASE}/api/saved-vocab/remove`, {
         method: 'POST',
@@ -48,6 +51,7 @@ after(async () => {
       });
     }
   }
+  // Belt-and-braces: restore the original disk contents as a fallback.
   if (originalContents !== null) {
     await writeFile(SAVED_PATH, originalContents);
   }
@@ -64,6 +68,7 @@ describe('GET /api/saved-vocab', () => {
 
 describe('POST /api/saved-vocab', () => {
   it('creates a new entry', async () => {
+    await removeTestExpression('TEST_chiudere');
     const res = await fetch(`${BASE}/api/saved-vocab`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,6 +88,7 @@ describe('POST /api/saved-vocab', () => {
   });
 
   it('appends source on duplicate expression', async () => {
+    await removeTestExpression('TEST_merge');
     // First create
     await fetch(`${BASE}/api/saved-vocab`, {
       method: 'POST',
@@ -123,6 +129,7 @@ describe('POST /api/saved-vocab', () => {
 
 describe('POST /api/saved-vocab/remove', () => {
   it('removes an existing entry', async () => {
+    await removeTestExpression('TEST_remove_me');
     await fetch(`${BASE}/api/saved-vocab`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
