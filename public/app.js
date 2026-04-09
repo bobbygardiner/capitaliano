@@ -1197,7 +1197,10 @@ function formatSavedVocabSource(sources) {
     const name = sessionsById.has(s.sessionId) ? s.sessionName : `${s.sessionName || 'Unknown session'} (session removed)`;
     return `from <strong>${escapeHtml(name)}</strong>`;
   }
-  const names = sources.map(s => s.sessionName || 'Unknown session');
+  const names = sources.map(s => {
+    const base = s.sessionName || 'Unknown session';
+    return sessionsById.has(s.sessionId) ? base : `${base} (removed)`;
+  });
   const title = escapeAttr(names.join(', '));
   return `from <strong title="${title}">${sources.length} sessions</strong>`;
 }
@@ -1457,6 +1460,7 @@ startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);
 loadDevices();
 initActiveSession();
+loadSessionsList();
 loadSavedVocab();
 
 document.getElementById('saved-vocab-search').addEventListener('input', (e) => {
