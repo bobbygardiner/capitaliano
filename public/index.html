@@ -773,12 +773,16 @@
       color: var(--text-muted);
     }
 
-    .saved-vocab-controls {
+    .saved-vocab-controls,
+    .vocab-controls {
       display: flex;
       gap: 10px;
       align-items: center;
       margin-bottom: 16px;
       flex-wrap: wrap;
+    }
+    .vocab-controls {
+      padding: 12px 16px 0 16px;
     }
     .saved-vocab-search {
       flex: 1;
@@ -1324,6 +1328,15 @@
     </div>
   </div>
   <div id="vocab-panel" class="tab-content">
+    <div class="vocab-controls">
+      <input id="vocab-search" class="saved-vocab-search" type="text" placeholder="Search phrases or meanings…" />
+      <div class="saved-vocab-filters">
+        <button data-bucket="all" class="filter-chip vocab-filter-chip active">All</button>
+        <button data-bucket="advanced" class="filter-chip vocab-filter-chip">Advanced</button>
+        <button data-bucket="intermediate" class="filter-chip vocab-filter-chip">Intermediate</button>
+        <button data-bucket="common" class="filter-chip vocab-filter-chip">Common</button>
+      </div>
+    </div>
     <div id="vocab-list" class="vocab-list">
       <div class="vocab-empty">No vocabulary collected yet</div>
     </div>

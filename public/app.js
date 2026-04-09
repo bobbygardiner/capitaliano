@@ -1009,10 +1009,26 @@ function buildContextQuote(text) {
   return `…${snippet}${ellipsis}`;
 }
 
+let vocabSearch = '';
+let vocabFilter = 'all';
+
 function renderVocab() {
-  const vocab = collectVocab();
-  if (!vocab.length) {
+  const allVocab = collectVocab();
+  if (!allVocab.length) {
     vocabList.innerHTML = '<div class="vocab-empty">No vocabulary collected yet</div>';
+    return;
+  }
+
+  const search = vocabSearch.trim().toLowerCase();
+  const vocab = allVocab.filter(item => {
+    if (vocabFilter !== 'all' && item.bucket !== vocabFilter) return false;
+    if (!search) return true;
+    return item.expression.toLowerCase().includes(search) ||
+           (item.meaning || '').toLowerCase().includes(search);
+  });
+
+  if (!vocab.length) {
+    vocabList.innerHTML = '<div class="vocab-empty">No matches for the current filter</div>';
     return;
   }
 
@@ -1468,12 +1484,26 @@ document.getElementById('saved-vocab-search').addEventListener('input', (e) => {
   renderSavedVocab();
 });
 
-document.querySelectorAll('.filter-chip').forEach(chip => {
+document.querySelectorAll('#saved-vocab-view .filter-chip').forEach(chip => {
   chip.addEventListener('click', () => {
-    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('#saved-vocab-view .filter-chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     savedVocabFilter = chip.dataset.bucket;
     renderSavedVocab();
+  });
+});
+
+document.getElementById('vocab-search').addEventListener('input', (e) => {
+  vocabSearch = e.target.value;
+  renderVocab();
+});
+
+document.querySelectorAll('#vocab-panel .filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#vocab-panel .filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    vocabFilter = chip.dataset.bucket;
+    renderVocab();
   });
 });
 
