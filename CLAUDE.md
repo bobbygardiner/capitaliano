@@ -3,7 +3,7 @@
 ## What this project is
 A personal live transcription and translation tool for Italian TV audio. A Node.js
 backend proxies mic audio to the Voxtral Realtime API and post-processes each
-utterance with translation and entity extraction via Claude Code CLI. The frontend
+utterance with translation and entity extraction via the Anthropic API. The frontend
 displays a rolling karaoke-style Italian transcript with optional English translations
 and highlighted entities/idioms.
 
@@ -15,7 +15,7 @@ highlighting, and polished karaoke-style UI.
 - **Backend**: Node.js — audio proxy, session storage, REST API, translation pipeline
 - **Frontend**: `index.html` (HTML+CSS) + `app.js` (vanilla JS), no framework, no build step
 - **STT**: Mistral Voxtral Realtime API (`voxtral-mini-transcribe-realtime-2602`)
-- **Translation**: Claude Code CLI (`claude -p`) for translation + entity extraction
+- **Translation**: Anthropic API (`@anthropic-ai/sdk`) for translation + entity extraction
 - **Audio**: Browser `getUserMedia` → PCM16 @ 16kHz → WebSocket to Node → Mistral SDK
 
 ## Project structure
@@ -25,7 +25,7 @@ capito/
 ├── server.js              # HTTP + WebSocket server, REST API, Mistral proxy
 ├── lib/
 │   ├── sessions.js        # Session CRUD, JSON file I/O, flush timer
-│   └── translate.js       # Translation via claude -p CLI
+│   └── translate.js       # Translation via Anthropic API
 ├── public/
 │   ├── index.html         # HTML structure + all CSS (inline)
 │   ├── app.js             # Application JavaScript
@@ -38,7 +38,7 @@ capito/
 │       ├── specs/          # Design specs
 │       └── plans/          # Implementation plans
 ├── package.json
-├── .env                   # MISTRAL_API_KEY (gitignored)
+├── .env                   # MISTRAL_API_KEY, ANTHROPIC_API_KEY (gitignored)
 ├── .env.example
 ├── context.md
 └── CLAUDE.md              # This file
@@ -47,7 +47,7 @@ capito/
 ## Key technical details
 - Audio: PCM16, 16kHz, mono, little-endian via AudioWorklet
 - Server intercepts `transcription.done` events to save lines and trigger translation
-- Translation is fire-and-forget async: `claude -p` returns JSON with translation, entities, idioms
+- Translation is fire-and-forget async: Anthropic API returns JSON with translation, entities, idioms
 - Sessions stored as JSON files in sessions/ with 5-second flush timer
 - WebSocket protocol: `transcription.text.delta`, `transcription.done` (with lineId), `analysis`, `error`
 - Entity types: player, team, stadium, coach — each with colored underlines
