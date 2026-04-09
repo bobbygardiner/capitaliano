@@ -57,6 +57,7 @@ let contentTypes = [];
 // Saved vocab cache: lowercased expression -> true
 const savedVocabSet = new Set();
 let savedVocabCache = []; // full entries list, used by Saved Vocab view
+let sessionsById = new Map();
 
 function normalizeExpression(expression) {
   return String(expression || '').trim().toLowerCase();
@@ -125,7 +126,9 @@ async function loadSessionsList() {
   try {
     const res = await fetch('/api/sessions');
     const data = await res.json();
+    sessionsById = new Map((data.sessions || []).map(s => [s.id, s]));
     renderSessionsList(data.sessions || []);
+    if (currentView === 'saved-vocab') renderSavedVocab();
   } catch (err) {
     console.error('[capitaliano] Failed to load sessions:', err);
   }
@@ -1126,10 +1129,98 @@ function updateSavedVocabCount() {
   sidebarSavedVocabCount.textContent = savedVocabCache.length;
 }
 
+let savedVocabSearch = '';
+let savedVocabFilter = 'all';
+
 function renderSavedVocab() {
   const listEl = document.getElementById('saved-vocab-list');
-  listEl.innerHTML = '<div class="saved-vocab-empty">Saved vocab renders in the next step.</div>';
-  document.querySelector('.saved-vocab-count').textContent = `${savedVocabCache.length} phrases`;
+  const countEl = document.querySelector('.saved-vocab-count');
+
+  const search = savedVocabSearch.trim().toLowerCase();
+  const entries = savedVocabCache.filter(e => {
+    if (savedVocabFilter !== 'all' && e.bucket !== savedVocabFilter) return false;
+    if (!search) return true;
+    return e.expression.toLowerCase().includes(search) ||
+           (e.meaning || '').toLowerCase().includes(search);
+  });
+
+  // Count across all (unfiltered) entries for the header
+  const totalEntries = savedVocabCache.length;
+  const sessionIds = new Set();
+  for (const e of savedVocabCache) {
+    for (const s of e.sources || []) sessionIds.add(s.sessionId);
+  }
+  countEl.textContent = `${totalEntries} phrase${totalEntries === 1 ? '' : 's'} across ${sessionIds.size} session${sessionIds.size === 1 ? '' : 's'}`;
+
+  if (!entries.length) {
+    listEl.innerHTML = totalEntries === 0
+      ? '<div class="saved-vocab-empty">No saved vocab yet — save phrases from the Vocab tab.</div>'
+      : '<div class="saved-vocab-empty">No matches for the current filter.</div>';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'saved-vocab-row';
+
+    const sources = entry.sources || [];
+    const firstSource = sources[0];
+    const contextQuote = firstSource?.contextQuote || '';
+    const sourceLine = formatSavedVocabSource(sources);
+
+    row.innerHTML = `
+      <div>
+        <div class="saved-vocab-expr">
+          <span class="bucket-dot bucket-${entry.bucket || 'intermediate'}"></span>
+          ${escapeHtml(entry.expression)}
+        </div>
+        <div class="saved-vocab-meaning">${escapeHtml(entry.meaning || '')}</div>
+        ${contextQuote ? `<div class="saved-vocab-ctx">"${escapeHtml(contextQuote)}"</div>` : ''}
+        <div class="saved-vocab-source">${sourceLine}</div>
+      </div>
+      <button class="vocab-star-btn saved" title="Remove from saved">★</button>
+    `;
+
+    row.querySelector('.vocab-star-btn').addEventListener('click', async () => {
+      await removeSavedVocabEntry(entry);
+    });
+
+    listEl.appendChild(row);
+  }
+}
+
+function formatSavedVocabSource(sources) {
+  if (!sources.length) return '';
+  if (sources.length === 1) {
+    const s = sources[0];
+    const name = sessionsById.has(s.sessionId) ? s.sessionName : `${s.sessionName || 'Unknown session'} (session removed)`;
+    return `from <strong>${escapeHtml(name)}</strong>`;
+  }
+  const names = sources.map(s => s.sessionName || 'Unknown session');
+  const title = escapeAttr(names.join(', '));
+  return `from <strong title="${title}">${sources.length} sessions</strong>`;
+}
+
+async function removeSavedVocabEntry(entry) {
+  const key = normalizeExpression(entry.expression);
+  try {
+    const res = await fetch('/api/saved-vocab/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expression: entry.expression }),
+    });
+    if (!res.ok) throw new Error('Remove failed');
+    savedVocabCache = savedVocabCache.filter(e => normalizeExpression(e.expression) !== key);
+    savedVocabSet.delete(key);
+    updateSavedVocabCount();
+    renderSavedVocab();
+    // Also refresh the session-level Vocab tab so its star updates
+    if (currentSession) renderVocab();
+  } catch (err) {
+    console.error('[capitaliano] removeSavedVocabEntry failed:', err);
+    alert('Failed to remove saved vocab. Please try again.');
+  }
 }
 
 // --- Utilities ---
@@ -1367,4 +1458,19 @@ stopBtn.addEventListener('click', stop);
 loadDevices();
 initActiveSession();
 loadSavedVocab();
+
+document.getElementById('saved-vocab-search').addEventListener('input', (e) => {
+  savedVocabSearch = e.target.value;
+  renderSavedVocab();
+});
+
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    savedVocabFilter = chip.dataset.bucket;
+    renderSavedVocab();
+  });
+});
+
 connectPersistentWs();
