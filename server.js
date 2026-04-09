@@ -112,6 +112,30 @@ const server = createServer(async (req, res) => {
         }
       }
 
+      if (urlPath === '/api/saved-vocab' && req.method === 'GET') {
+        return sendJson(res, 200, { entries: savedVocab.list() });
+      }
+
+      if (urlPath === '/api/saved-vocab/remove' && req.method === 'POST') {
+        const body = await readBody(req);
+        if (!body.expression) return sendJson(res, 400, { error: 'expression is required' });
+        const removed = await savedVocab.remove(body.expression);
+        return sendJson(res, 200, { removed });
+      }
+
+      if (urlPath === '/api/saved-vocab' && req.method === 'POST') {
+        const body = await readBody(req);
+        if (!body.expression) return sendJson(res, 400, { error: 'expression is required' });
+        if (!body.source || !body.source.sessionId) return sendJson(res, 400, { error: 'source with sessionId is required' });
+        const { entry, created } = await savedVocab.add({
+          expression: body.expression,
+          meaning: body.meaning || '',
+          bucket: body.bucket || 'intermediate',
+          source: body.source,
+        });
+        return sendJson(res, created ? 201 : 200, { entry, created });
+      }
+
       const audioMatch = urlPath.match(RE_SESSION_AUDIO);
       if (audioMatch && req.method === 'GET') {
         const id = audioMatch[1];
