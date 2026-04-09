@@ -1021,6 +1021,9 @@ function renderVocab() {
 }
 
 async function toggleSavedVocab(item, btn) {
+  if (btn.dataset.pending === '1') return;
+  btn.dataset.pending = '1';
+
   const key = normalizeExpression(item.expression);
   const wasSaved = savedVocabSet.has(key);
 
@@ -1063,20 +1066,20 @@ async function toggleSavedVocab(item, btn) {
       });
       if (!res.ok) throw new Error('Save failed');
       const data = await res.json();
-      // Replace-or-insert in cache
       const existingIdx = savedVocabCache.findIndex(e => normalizeExpression(e.expression) === key);
       if (existingIdx >= 0) savedVocabCache[existingIdx] = data.entry;
       else savedVocabCache.unshift(data.entry);
     }
   } catch (err) {
     console.error('[capitaliano] toggleSavedVocab failed:', err);
-    // Revert
+    // Revert set state, then re-render to reconcile UI (handles stale DOM refs)
     if (wasSaved) savedVocabSet.add(key);
     else savedVocabSet.delete(key);
-    btn.classList.toggle('saved', wasSaved);
-    btn.textContent = wasSaved ? '★' : '☆';
-    btn.title = wasSaved ? 'Remove from saved' : 'Save vocab';
+    renderVocab();
     alert('Failed to update saved vocab. Please try again.');
+  } finally {
+    // Clear pending guard if btn is still in the DOM
+    if (btn && btn.isConnected) btn.dataset.pending = '';
   }
 }
 
