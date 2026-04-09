@@ -37,6 +37,12 @@ const addTypeInput = document.getElementById('add-type-input');
 const addTypeBtn = document.getElementById('add-type-btn');
 const cancelTypeBtn = document.getElementById('cancel-type-btn');
 
+let currentView = 'session'; // 'session' | 'saved-vocab'
+const sidebarSavedVocabBtn = document.getElementById('sidebar-saved-vocab');
+const sidebarSavedVocabCount = document.getElementById('sidebar-saved-vocab-count');
+const savedVocabView = document.getElementById('saved-vocab-view');
+const topBar = document.querySelector('.top-bar');
+
 // --- State ---
 let currentSession = null;
 let audioContext = null;
@@ -63,6 +69,7 @@ async function loadSavedVocab() {
     savedVocabCache = data.entries || [];
     savedVocabSet.clear();
     for (const e of savedVocabCache) savedVocabSet.add(normalizeExpression(e.expression));
+    updateSavedVocabCount();
   } catch (err) {
     console.error('[capitaliano] Failed to load saved vocab:', err);
   }
@@ -350,6 +357,7 @@ cancelTypeBtn.addEventListener('click', () => {
 });
 
 async function loadSession(id) {
+  if (currentView === 'saved-vocab') showSessionView();
   try {
     const res = await fetch(`/api/sessions/${id}`);
     const session = await res.json();
@@ -921,6 +929,35 @@ tabBar.addEventListener('click', (e) => {
   document.getElementById(tab === 'vocab' ? 'vocab-panel' : 'transcript').classList.add('active');
 });
 
+// --- View switching (session vs saved-vocab) ---
+
+function showSavedVocabView() {
+  currentView = 'saved-vocab';
+  sidebarSavedVocabBtn.classList.add('active');
+  transcript.classList.remove('active');
+  document.getElementById('vocab-panel').classList.remove('active');
+  tabBar.classList.add('hidden');
+  savedVocabView.classList.remove('hidden');
+  topBar.classList.add('view-saved-vocab');
+  closeSessions();
+  renderSavedVocab();
+}
+
+function showSessionView() {
+  currentView = 'session';
+  sidebarSavedVocabBtn.classList.remove('active');
+  tabBar.classList.remove('hidden');
+  savedVocabView.classList.add('hidden');
+  topBar.classList.remove('view-saved-vocab');
+
+  // Restore whichever tab was active
+  const activeTab = tabBar.querySelector('.tab-btn.active');
+  const tabName = activeTab?.dataset.tab || 'transcript';
+  document.getElementById(tabName === 'vocab' ? 'vocab-panel' : 'transcript').classList.add('active');
+}
+
+sidebarSavedVocabBtn.addEventListener('click', showSavedVocabView);
+
 // --- Vocab panel ---
 
 const BUCKET_ORDER = ['advanced', 'intermediate', 'common', 'unbucketed'];
@@ -1046,6 +1083,7 @@ async function toggleSavedVocab(item, btn) {
       });
       if (!res.ok) throw new Error('Remove failed');
       savedVocabCache = savedVocabCache.filter(e => normalizeExpression(e.expression) !== key);
+      updateSavedVocabCount();
     } else {
       const source = {
         sessionId: currentSession.id,
@@ -1069,6 +1107,7 @@ async function toggleSavedVocab(item, btn) {
       const existingIdx = savedVocabCache.findIndex(e => normalizeExpression(e.expression) === key);
       if (existingIdx >= 0) savedVocabCache[existingIdx] = data.entry;
       else savedVocabCache.unshift(data.entry);
+      updateSavedVocabCount();
     }
   } catch (err) {
     console.error('[capitaliano] toggleSavedVocab failed:', err);
@@ -1081,6 +1120,16 @@ async function toggleSavedVocab(item, btn) {
     // Clear pending guard if btn is still in the DOM
     if (btn && btn.isConnected) btn.dataset.pending = '';
   }
+}
+
+function updateSavedVocabCount() {
+  sidebarSavedVocabCount.textContent = savedVocabCache.length;
+}
+
+function renderSavedVocab() {
+  const listEl = document.getElementById('saved-vocab-list');
+  listEl.innerHTML = '<div class="saved-vocab-empty">Saved vocab renders in the next step.</div>';
+  document.querySelector('.saved-vocab-count').textContent = `${savedVocabCache.length} phrases`;
 }
 
 // --- Utilities ---
