@@ -703,6 +703,121 @@
       text-align: center;
     }
 
+    /* --- Saved Vocab View --- */
+    .saved-vocab-view {
+      padding: 20px 24px 40px 24px;
+      max-width: 760px;
+      margin: 0 auto;
+      overflow-y: auto;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .saved-vocab-view.hidden { display: none; }
+
+    .saved-vocab-header {
+      margin-bottom: 12px;
+    }
+    .saved-vocab-title {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 4px 0;
+      color: var(--text);
+    }
+    .saved-vocab-count {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .saved-vocab-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .saved-vocab-search {
+      flex: 1;
+      min-width: 200px;
+      padding: 8px 12px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+    }
+    .saved-vocab-search:focus {
+      outline: none;
+      border-color: var(--border-strong);
+    }
+
+    .saved-vocab-filters {
+      display: flex;
+      gap: 6px;
+    }
+    .filter-chip {
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .filter-chip:hover { background: var(--surface); }
+    .filter-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .saved-vocab-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .saved-vocab-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 40px 0;
+    }
+    .saved-vocab-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 14px 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .saved-vocab-row:last-child { border-bottom: none; }
+    .saved-vocab-expr {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .saved-vocab-expr .bucket-dot { margin-right: 8px; }
+    .saved-vocab-meaning {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      margin-bottom: 5px;
+    }
+    .saved-vocab-ctx {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-style: italic;
+      margin-bottom: 4px;
+    }
+    .saved-vocab-source {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .saved-vocab-source strong { color: var(--text); font-weight: 600; }
+    .saved-vocab-row .vocab-star-btn { align-self: start; }
+
     /* --- Empty state --- */
     .empty-state {
       display: flex;
@@ -1149,6 +1264,25 @@
     <div id="vocab-list" class="vocab-list">
       <div class="vocab-empty">No vocabulary collected yet</div>
     </div>
+  </div>
+
+  <div id="saved-vocab-view" class="saved-vocab-view hidden">
+    <header class="saved-vocab-header">
+      <div>
+        <h2 class="saved-vocab-title">Saved Vocab</h2>
+        <div class="saved-vocab-count"></div>
+      </div>
+    </header>
+    <div class="saved-vocab-controls">
+      <input id="saved-vocab-search" class="saved-vocab-search" type="text" placeholder="Search phrases or meanings…" />
+      <div class="saved-vocab-filters">
+        <button data-bucket="all" class="filter-chip active">All</button>
+        <button data-bucket="advanced" class="filter-chip">Advanced</button>
+        <button data-bucket="intermediate" class="filter-chip">Intermediate</button>
+        <button data-bucket="common" class="filter-chip">Common</button>
+      </div>
+    </div>
+    <div id="saved-vocab-list" class="saved-vocab-list"></div>
   </div>
 
   <!-- Edit context modal -->
