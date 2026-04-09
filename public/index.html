@@ -614,6 +614,7 @@
     .vocab-item {
       padding: 14px 0;
       border-bottom: 1px solid var(--border);
+      position: relative;
     }
 
     .vocab-item:last-child { border-bottom: none; }
@@ -649,6 +650,50 @@
       color: var(--text-muted);
       font-variant-numeric: tabular-nums;
       margin-top: 4px;
+    }
+
+    .bucket-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .bucket-dot.bucket-advanced { background: #B07D4B; }
+    .bucket-dot.bucket-intermediate { background: #C9A860; }
+    .bucket-dot.bucket-common { background: #b9b4a8; }
+    .bucket-dot.bucket-unbucketed { background: transparent; border: 1px dashed var(--border); }
+
+    .level-group-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 14px 4px 6px 4px;
+    }
+    .level-group-label:first-child { padding-top: 4px; }
+
+    .vocab-star-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 2px 6px;
+      margin-left: 8px;
+      line-height: 1;
+    }
+    .vocab-star-btn:hover { color: var(--text); }
+    .vocab-star-btn.saved { color: var(--accent); }
+
+    .vocab-expression-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
     }
 
     .vocab-empty {
