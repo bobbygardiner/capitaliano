@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "backfill:buckets": "node scripts/backfill-buckets.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
