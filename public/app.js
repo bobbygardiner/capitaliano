@@ -198,6 +198,7 @@ function renderSessionsList(sessions) {
         clearTimeout(confirmTimer);
         try {
           await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' });
+          sessionDataCache.delete(s.id);
           if (currentSession && currentSession.id === s.id) {
             currentSession = null;
             sessionNameEl.classList.add('hidden');
@@ -1361,10 +1362,9 @@ saveContextBtn.addEventListener('click', async () => {
 // --- Audio playback ---
 
 let audioEl = null;
-let playingLineId = null;
 let currentBlobUrl = null;
-let playingBtn = null; // generic ref for any play button (used by saved vocab)
-let playingSourceKey = null; // `${sessionId}:${lineId}` for saved vocab playback
+let playingKey = null; // unique identifier for the currently-playing line (e.g. "session:<lineId>" or "saved:<sessionId>:<lineId>")
+let playingBtn = null; // DOM ref for the play button currently showing ■; reset by stopAudioPlayback
 
 function getAudioElement() {
   if (!audioEl) {
@@ -1383,27 +1383,12 @@ function stopAudioPlayback() {
     URL.revokeObjectURL(currentBlobUrl);
     currentBlobUrl = null;
   }
-  // Reset play button icon (transcript line)
-  if (playingLineId !== null) {
-    const el = lineElements.get(playingLineId);
-    if (el) {
-      const btn = el.querySelector('.line-play-btn');
-      if (btn) {
-        btn.textContent = '\u25B6';
-        btn.classList.remove('playing');
-      }
-    }
-    playingLineId = null;
+  if (playingBtn && playingBtn.isConnected) {
+    playingBtn.textContent = '\u25B6';
+    playingBtn.classList.remove('playing');
   }
-  // Reset generic play button (saved vocab)
-  if (playingBtn) {
-    if (playingBtn.isConnected) {
-      playingBtn.textContent = '\u25B6';
-      playingBtn.classList.remove('playing');
-    }
-    playingBtn = null;
-  }
-  playingSourceKey = null;
+  playingBtn = null;
+  playingKey = null;
 }
 
 // Cache loaded sessions so repeat plays are instant
@@ -1417,97 +1402,59 @@ async function loadSessionCached(sessionId) {
   return session;
 }
 
-async function playSavedVocabAudio(source, btn) {
-  const key = `${source.sessionId}:${source.lineId}`;
-  if (playingSourceKey === key) {
+// Shared audio playback: plays the audio range for a single line within the
+// given session, handling stop-toggle and button state. `key` uniquely
+// identifies this playback context so repeated clicks toggle rather than restart.
+async function playLineRange(session, lineId, btn, key) {
+  if (playingKey === key) {
     stopAudioPlayback();
     return;
   }
   stopAudioPlayback();
 
-  try {
-    const session = await loadSessionCached(source.sessionId);
-    const lines = session.lines || [];
-    const idx = lines.findIndex(l => l.lineId === source.lineId);
-    if (idx === -1) return;
-    const line = lines[idx];
-    const prevLine = idx > 0 ? lines[idx - 1] : null;
-    const from = prevLine?.audioOffsetSec ?? 0;
-    const to = line.audioOffsetSec;
-    if (to == null) return;
-
-    const res = await fetch(`/api/sessions/${source.sessionId}/audio?from=${from}&to=${to}`);
-    if (!res.ok) return;
-    const blob = await res.blob();
-    currentBlobUrl = URL.createObjectURL(blob);
-
-    const audio = getAudioElement();
-    audio.src = currentBlobUrl;
-    playingSourceKey = key;
-    playingBtn = btn;
-    btn.textContent = '\u25A0';
-    btn.classList.add('playing');
-
-    await audio.play();
-  } catch (err) {
-    console.error('[capitaliano] Saved vocab audio error:', err);
-    stopAudioPlayback();
-  }
-}
-
-async function playLineAudio(lineId) {
-  // If already playing this line, stop
-  if (playingLineId === lineId) {
-    stopAudioPlayback();
-    return;
-  }
-
-  // Stop any current playback
-  stopAudioPlayback();
-
-  if (!currentSession) return;
-
-  // Compute from/to offsets
-  const lines = currentSession.lines;
-  const lineIndex = lines.findIndex(l => l.lineId === lineId);
-  if (lineIndex === -1) return;
-
-  const line = lines[lineIndex];
-  const prevLine = lineIndex > 0 ? lines[lineIndex - 1] : null;
+  const lines = session.lines || [];
+  const idx = lines.findIndex(l => l.lineId === lineId);
+  if (idx === -1) return;
+  const line = lines[idx];
+  const prevLine = idx > 0 ? lines[idx - 1] : null;
   const from = prevLine?.audioOffsetSec ?? 0;
   const to = line.audioOffsetSec;
-
-  if (to === null || to === undefined) return;
-
-  // Build URL
-  let url = `/api/sessions/${currentSession.id}/audio?from=${from}`;
-  if (to !== null && to !== undefined) url += `&to=${to}`;
+  if (to == null) return;
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(`/api/sessions/${session.id}/audio?from=${from}&to=${to}`);
     if (!res.ok) return;
-
     const blob = await res.blob();
     currentBlobUrl = URL.createObjectURL(blob);
 
     const audio = getAudioElement();
     audio.src = currentBlobUrl;
-    playingLineId = lineId;
-
-    // Update button to stop icon
-    const el = lineElements.get(lineId);
-    if (el) {
-      const btn = el.querySelector('.line-play-btn');
-      if (btn) {
-        btn.textContent = '\u25A0';
-        btn.classList.add('playing');
-      }
+    playingKey = key;
+    playingBtn = btn;
+    if (btn) {
+      btn.textContent = '\u25A0';
+      btn.classList.add('playing');
     }
 
     await audio.play();
   } catch (err) {
     console.error('[capitaliano] Audio playback error:', err);
     stopAudioPlayback();
+  }
+}
+
+async function playLineAudio(lineId) {
+  if (!currentSession) return;
+  const btn = lineElements.get(lineId)?.querySelector('.line-play-btn') ?? null;
+  await playLineRange(currentSession, lineId, btn, `session:${lineId}`);
+}
+
+async function playSavedVocabAudio(source, btn) {
+  try {
+    const session = await loadSessionCached(source.sessionId);
+    await playLineRange(session, source.lineId, btn, `saved:${source.sessionId}:${source.lineId}`);
+  } catch (err) {
+    console.error('[capitaliano] Saved vocab audio error:', err);
   }
 }
 
@@ -1551,10 +1498,22 @@ initActiveSession();
 loadSessionsList();
 loadSavedVocab();
 
-document.getElementById('saved-vocab-search').addEventListener('input', (e) => {
-  savedVocabSearch = e.target.value;
+// Debounce trailing-edge: avoid rebuilding a 300+ item vocab list on every keystroke
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+const SEARCH_DEBOUNCE_MS = 120;
+
+const savedVocabSearchInput = document.getElementById('saved-vocab-search');
+savedVocabSearchInput.addEventListener('input', debounce(() => {
+  savedVocabSearch = savedVocabSearchInput.value;
   renderSavedVocab();
-});
+}, SEARCH_DEBOUNCE_MS));
 
 document.querySelectorAll('#saved-vocab-view .filter-chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -1565,10 +1524,11 @@ document.querySelectorAll('#saved-vocab-view .filter-chip').forEach(chip => {
   });
 });
 
-document.getElementById('vocab-search').addEventListener('input', (e) => {
-  vocabSearch = e.target.value;
+const vocabSearchInput = document.getElementById('vocab-search');
+vocabSearchInput.addEventListener('input', debounce(() => {
+  vocabSearch = vocabSearchInput.value;
   renderVocab();
-});
+}, SEARCH_DEBOUNCE_MS));
 
 document.querySelectorAll('#vocab-panel .filter-chip').forEach(chip => {
   chip.addEventListener('click', () => {
