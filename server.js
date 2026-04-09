@@ -10,6 +10,7 @@ import {
   AudioEncoding,
 } from '@mistralai/mistralai/extra/realtime';
 import * as sessions from './lib/sessions.js';
+import * as savedVocab from './lib/saved-vocab.js';
 import { createBatchPipeline, parseContextBias, transcribeBatch } from './lib/batch.js';
 import { analyzeCommentary, splitAndAnalyze, mergeAndAnalyze } from './lib/translate.js';
 import { searchContext, buildContextString } from './lib/context-search.js';
@@ -474,6 +475,7 @@ wss.on('connection', async (ws) => {
 // --- Initialize and start ---
 
 await sessions.init();
+await savedVocab.init(resolve('sessions', 'saved-vocab.json'));
 
 server.listen(PORT, () => {
   console.log(`[capitaliano] Running at http://localhost:${PORT}`);
@@ -482,6 +484,7 @@ server.listen(PORT, () => {
 // Graceful shutdown
 async function gracefulShutdown() {
   await sessions.shutdown();
+  await savedVocab.shutdown();
   process.exit(0);
 }
 
