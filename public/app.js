@@ -48,6 +48,26 @@ let lineElements = new Map(); // lineId -> DOM element
 let sessionCostUsd = 0;
 let contentTypes = [];
 
+// Saved vocab cache: lowercased expression -> true
+const savedVocabSet = new Set();
+let savedVocabCache = []; // full entries list, used by Saved Vocab view
+
+function normalizeExpression(expression) {
+  return String(expression || '').trim().toLowerCase();
+}
+
+async function loadSavedVocab() {
+  try {
+    const res = await fetch('/api/saved-vocab');
+    const data = await res.json();
+    savedVocabCache = data.entries || [];
+    savedVocabSet.clear();
+    for (const e of savedVocabCache) savedVocabSet.add(normalizeExpression(e.expression));
+  } catch (err) {
+    console.error('[capitaliano] Failed to load saved vocab:', err);
+  }
+}
+
 // --- Content types ---
 
 async function loadContentTypes() {
@@ -903,24 +923,50 @@ tabBar.addEventListener('click', (e) => {
 
 // --- Vocab panel ---
 
+const BUCKET_ORDER = ['advanced', 'intermediate', 'common', 'unbucketed'];
+const BUCKET_LABEL = {
+  advanced: 'Advanced',
+  intermediate: 'Intermediate',
+  common: 'Common',
+  unbucketed: 'Unscored',
+};
+
 // Collect idioms from all lines in the current session view
 function collectVocab() {
   if (!currentSession) return [];
   const vocab = [];
+  // Iterating lines in array order preserves chronological ordering within
+  // each bucket after groupVocabByBucket() runs.
   for (const line of currentSession.lines) {
     if (!line.idioms || !line.idioms.length) continue;
     for (const idiom of line.idioms) {
       vocab.push({
         expression: idiom.expression,
         meaning: idiom.meaning,
+        bucket: idiom.bucket || 'unbucketed',
         context: line.text,
         timestamp: line.timestamp,
         lineId: line.lineId,
+        audioOffsetSec: line.audioOffsetSec ?? null,
         hasAudio: line.audioOffsetSec != null,
       });
     }
   }
   return vocab;
+}
+
+function groupVocabByBucket(vocab) {
+  const groups = { advanced: [], intermediate: [], common: [], unbucketed: [] };
+  for (const item of vocab) {
+    (groups[item.bucket] || groups.unbucketed).push(item);
+  }
+  return groups;
+}
+
+function buildContextQuote(text) {
+  const snippet = text.slice(0, 120);
+  const ellipsis = text.length > 120 ? '…' : '';
+  return `…${snippet}${ellipsis}`;
 }
 
 function renderVocab() {
@@ -930,23 +976,107 @@ function renderVocab() {
     return;
   }
 
+  const groups = groupVocabByBucket(vocab);
   vocabList.innerHTML = '';
-  for (const item of vocab) {
-    const el = document.createElement('div');
-    el.className = 'vocab-item';
-    el.innerHTML = `
-      <div class="vocab-expression">${item.hasAudio ? '<span class="vocab-play-btn" title="Play audio">\u25B6</span> ' : ''}${escapeHtml(item.expression)}</div>
-      <div class="vocab-meaning">${escapeHtml(item.meaning)}</div>
-      <div class="vocab-context">"…${escapeHtml(item.context.slice(0, 120))}${item.context.length > 120 ? '…' : ''}"</div>
-      <div class="vocab-time">${formatElapsed(item.timestamp)}</div>
-    `;
-    if (item.hasAudio) {
-      el.querySelector('.vocab-play-btn').addEventListener('click', (e) => {
+
+  for (const bucket of BUCKET_ORDER) {
+    const items = groups[bucket];
+    if (!items.length) continue;
+
+    const label = document.createElement('div');
+    label.className = 'level-group-label';
+    label.textContent = BUCKET_LABEL[bucket];
+    vocabList.appendChild(label);
+
+    for (const item of items) {
+      const el = document.createElement('div');
+      el.className = 'vocab-item';
+      const isSaved = savedVocabSet.has(normalizeExpression(item.expression));
+      el.innerHTML = `
+        <div class="vocab-expression-row">
+          <div class="vocab-expression">
+            <span class="bucket-dot bucket-${bucket}"></span>
+            ${item.hasAudio ? '<span class="vocab-play-btn" title="Play audio">\u25B6</span> ' : ''}
+            ${escapeHtml(item.expression)}
+          </div>
+          <button class="vocab-star-btn ${isSaved ? 'saved' : ''}" title="${isSaved ? 'Remove from saved' : 'Save vocab'}">${isSaved ? '★' : '☆'}</button>
+        </div>
+        <div class="vocab-meaning">${escapeHtml(item.meaning)}</div>
+        <div class="vocab-context">"${escapeHtml(buildContextQuote(item.context))}"</div>
+        <div class="vocab-time">${formatElapsed(item.timestamp)}</div>
+      `;
+      if (item.hasAudio) {
+        el.querySelector('.vocab-play-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          playLineAudio(item.lineId);
+        });
+      }
+      el.querySelector('.vocab-star-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        playLineAudio(item.lineId);
+        toggleSavedVocab(item, el.querySelector('.vocab-star-btn'));
       });
+      vocabList.appendChild(el);
     }
-    vocabList.appendChild(el);
+  }
+}
+
+async function toggleSavedVocab(item, btn) {
+  const key = normalizeExpression(item.expression);
+  const wasSaved = savedVocabSet.has(key);
+
+  // Optimistic update
+  if (wasSaved) {
+    savedVocabSet.delete(key);
+  } else {
+    savedVocabSet.add(key);
+  }
+  btn.classList.toggle('saved', !wasSaved);
+  btn.textContent = wasSaved ? '☆' : '★';
+  btn.title = wasSaved ? 'Save vocab' : 'Remove from saved';
+
+  try {
+    if (wasSaved) {
+      const res = await fetch('/api/saved-vocab/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expression: item.expression }),
+      });
+      if (!res.ok) throw new Error('Remove failed');
+      savedVocabCache = savedVocabCache.filter(e => normalizeExpression(e.expression) !== key);
+    } else {
+      const source = {
+        sessionId: currentSession.id,
+        sessionName: currentSession.name,
+        lineId: item.lineId,
+        contextQuote: buildContextQuote(item.context),
+        audioOffsetSec: item.audioOffsetSec,
+      };
+      const res = await fetch('/api/saved-vocab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expression: item.expression,
+          meaning: item.meaning,
+          bucket: item.bucket === 'unbucketed' ? 'intermediate' : item.bucket,
+          source,
+        }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      const data = await res.json();
+      // Replace-or-insert in cache
+      const existingIdx = savedVocabCache.findIndex(e => normalizeExpression(e.expression) === key);
+      if (existingIdx >= 0) savedVocabCache[existingIdx] = data.entry;
+      else savedVocabCache.unshift(data.entry);
+    }
+  } catch (err) {
+    console.error('[capitaliano] toggleSavedVocab failed:', err);
+    // Revert
+    if (wasSaved) savedVocabSet.add(key);
+    else savedVocabSet.delete(key);
+    btn.classList.toggle('saved', wasSaved);
+    btn.textContent = wasSaved ? '★' : '☆';
+    btn.title = wasSaved ? 'Remove from saved' : 'Save vocab';
+    alert('Failed to update saved vocab. Please try again.');
   }
 }
 
@@ -1184,4 +1314,5 @@ startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);
 loadDevices();
 initActiveSession();
+loadSavedVocab();
 connectPersistentWs();
