@@ -1184,6 +1184,7 @@ function renderSavedVocab() {
     const firstSource = sources[0];
     const contextQuote = firstSource?.contextQuote || '';
     const sourceLine = formatSavedVocabSource(sources);
+    const hasAudio = firstSource && firstSource.audioOffsetSec != null && sessionsById.has(firstSource.sessionId);
 
     row.innerHTML = `
       <div>
@@ -1195,12 +1196,23 @@ function renderSavedVocab() {
         ${contextQuote ? `<div class="saved-vocab-ctx">"${escapeHtml(contextQuote)}"</div>` : ''}
         <div class="saved-vocab-source">${sourceLine}</div>
       </div>
-      <button class="vocab-star-btn saved" title="Remove from saved">★</button>
+      <div class="saved-vocab-actions">
+        ${hasAudio ? '<button class="saved-vocab-play-btn" title="Play audio">\u25B6</button>' : ''}
+        <button class="vocab-star-btn saved" title="Remove from saved">★</button>
+      </div>
     `;
 
     row.querySelector('.vocab-star-btn').addEventListener('click', async () => {
       await removeSavedVocabEntry(entry);
     });
+
+    if (hasAudio) {
+      const playBtn = row.querySelector('.saved-vocab-play-btn');
+      playBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playSavedVocabAudio(firstSource, playBtn);
+      });
+    }
 
     listEl.appendChild(row);
   }
@@ -1351,6 +1363,8 @@ saveContextBtn.addEventListener('click', async () => {
 let audioEl = null;
 let playingLineId = null;
 let currentBlobUrl = null;
+let playingBtn = null; // generic ref for any play button (used by saved vocab)
+let playingSourceKey = null; // `${sessionId}:${lineId}` for saved vocab playback
 
 function getAudioElement() {
   if (!audioEl) {
@@ -1369,7 +1383,7 @@ function stopAudioPlayback() {
     URL.revokeObjectURL(currentBlobUrl);
     currentBlobUrl = null;
   }
-  // Reset play button icon
+  // Reset play button icon (transcript line)
   if (playingLineId !== null) {
     const el = lineElements.get(playingLineId);
     if (el) {
@@ -1380,6 +1394,64 @@ function stopAudioPlayback() {
       }
     }
     playingLineId = null;
+  }
+  // Reset generic play button (saved vocab)
+  if (playingBtn) {
+    if (playingBtn.isConnected) {
+      playingBtn.textContent = '\u25B6';
+      playingBtn.classList.remove('playing');
+    }
+    playingBtn = null;
+  }
+  playingSourceKey = null;
+}
+
+// Cache loaded sessions so repeat plays are instant
+const sessionDataCache = new Map();
+async function loadSessionCached(sessionId) {
+  if (sessionDataCache.has(sessionId)) return sessionDataCache.get(sessionId);
+  const res = await fetch(`/api/sessions/${sessionId}`);
+  if (!res.ok) throw new Error(`Failed to load session ${sessionId}`);
+  const session = await res.json();
+  sessionDataCache.set(sessionId, session);
+  return session;
+}
+
+async function playSavedVocabAudio(source, btn) {
+  const key = `${source.sessionId}:${source.lineId}`;
+  if (playingSourceKey === key) {
+    stopAudioPlayback();
+    return;
+  }
+  stopAudioPlayback();
+
+  try {
+    const session = await loadSessionCached(source.sessionId);
+    const lines = session.lines || [];
+    const idx = lines.findIndex(l => l.lineId === source.lineId);
+    if (idx === -1) return;
+    const line = lines[idx];
+    const prevLine = idx > 0 ? lines[idx - 1] : null;
+    const from = prevLine?.audioOffsetSec ?? 0;
+    const to = line.audioOffsetSec;
+    if (to == null) return;
+
+    const res = await fetch(`/api/sessions/${source.sessionId}/audio?from=${from}&to=${to}`);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    currentBlobUrl = URL.createObjectURL(blob);
+
+    const audio = getAudioElement();
+    audio.src = currentBlobUrl;
+    playingSourceKey = key;
+    playingBtn = btn;
+    btn.textContent = '\u25A0';
+    btn.classList.add('playing');
+
+    await audio.play();
+  } catch (err) {
+    console.error('[capitaliano] Saved vocab audio error:', err);
+    stopAudioPlayback();
   }
 }
 

@@ -866,6 +866,24 @@
     }
     .saved-vocab-source strong { color: var(--text); font-weight: 600; }
     .saved-vocab-row .vocab-star-btn { align-self: start; }
+    .saved-vocab-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      align-self: start;
+    }
+    .saved-vocab-play-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      padding: 2px 6px;
+      line-height: 1;
+      transition: color 0.15s ease;
+    }
+    .saved-vocab-play-btn:hover { color: var(--accent); }
+    .saved-vocab-play-btn.playing { color: var(--accent); }
 
     /* --- Empty state --- */
     .empty-state {
