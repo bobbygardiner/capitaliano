@@ -1421,7 +1421,7 @@ let trimBlobUrl = null;
 let trimContext = null; // { type, sessionId, lineId, session, vocabId, source, defaultFrom, defaultTo, bufferStart, bufferEnd }
 let trimStart = 0;
 let trimEnd = 0;
-let trimAnimFrame = null;
+// trimAnimFrame removed — playhead uses timeupdate event, not rAF
 
 function getAudioElement() {
   if (!audioEl) {
@@ -1480,23 +1480,27 @@ function getEffectiveTrim(lineId, session, overrides = {}) {
 async function openTrimModal({ type, sessionId, lineId, session, vocabId, source }) {
   stopAudioPlayback(); // stop any current playback
 
-  const defaultTrim = getEffectiveTrim(lineId, session, source || {});
-  if (!defaultTrim || defaultTrim.to == null) return;
+  // True auto-detected default (no overrides) — used for the dashed outline
+  const autoDefault = getEffectiveTrim(lineId, session);
+  if (!autoDefault || autoDefault.to == null) return;
 
-  const totalDuration = session.totalDurationSec || defaultTrim.to + 30;
-  const bufferStart = Math.max(0, defaultTrim.from - 30);
-  const bufferEnd = Math.min(totalDuration, defaultTrim.to + 30);
+  // Effective trim including any saved overrides — used for initial handle positions
+  const effectiveTrim = getEffectiveTrim(lineId, session, source || {});
 
-  // Determine current trim (saved values or defaults)
+  const totalDuration = session.totalDurationSec || autoDefault.to + 30;
+  const bufferStart = Math.max(0, Math.min(autoDefault.from, effectiveTrim.from) - 30);
+  const bufferEnd = Math.min(totalDuration, Math.max(autoDefault.to, effectiveTrim.to) + 30);
+
+  // Set handle positions: use saved trim if present, otherwise auto-detected default
   const currentOverrides = source || session.lines.find(l => l.lineId === lineId) || {};
   const hasSavedTrim = currentOverrides.trimStartSec != null;
-  trimStart = hasSavedTrim ? currentOverrides.trimStartSec : defaultTrim.from;
-  trimEnd = hasSavedTrim ? currentOverrides.trimEndSec : defaultTrim.to;
+  trimStart = hasSavedTrim ? currentOverrides.trimStartSec : autoDefault.from;
+  trimEnd = hasSavedTrim ? currentOverrides.trimEndSec : autoDefault.to;
 
   trimContext = {
     type, sessionId, lineId, session, vocabId: vocabId || null,
     source: source || null,
-    defaultFrom: defaultTrim.from, defaultTo: defaultTrim.to,
+    defaultFrom: autoDefault.from, defaultTo: autoDefault.to,
     bufferStart, bufferEnd,
   };
 
@@ -1559,10 +1563,7 @@ function closeTrimModal() {
     URL.revokeObjectURL(trimBlobUrl);
     trimBlobUrl = null;
   }
-  if (trimAnimFrame) {
-    cancelAnimationFrame(trimAnimFrame);
-    trimAnimFrame = null;
-  }
+  document.getElementById('trimPlayBtn').innerHTML = '\u25B6 Play';
   trimContext = null;
 }
 
@@ -1635,17 +1636,21 @@ function onTrimTimeUpdate() {
   // Pause at trim end
   if (currentSec >= trimEnd) {
     trimAudioEl.pause();
+    document.getElementById('trimPlayBtn').innerHTML = '\u25B6 Play';
   }
 }
 
 function onTrimPlay() {
   if (!trimAudioEl || !trimContext) return;
   const { bufferStart } = trimContext;
+  const playBtn = document.getElementById('trimPlayBtn');
   if (trimAudioEl.paused) {
     trimAudioEl.currentTime = trimStart - bufferStart;
     trimAudioEl.play();
+    playBtn.innerHTML = '\u23F8 Pause';
   } else {
     trimAudioEl.pause();
+    playBtn.innerHTML = '\u25B6 Play';
   }
 }
 
