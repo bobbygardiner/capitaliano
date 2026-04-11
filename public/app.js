@@ -451,6 +451,13 @@ function formatElapsed(timestamp) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function formatTrimTime(sec) {
+  if (sec == null || isNaN(sec)) return '0:00.0';
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+}
+
 function createLineElement(lineId, text, timestamp, audioOffsetSec) {
   const el = document.createElement('div');
   el.className = 'transcript-line';
@@ -1366,6 +1373,15 @@ let currentBlobUrl = null;
 let playingKey = null; // unique identifier for the currently-playing line (e.g. "session:<lineId>" or "saved:<sessionId>:<lineId>")
 let playingBtn = null; // DOM ref for the play button currently showing ■; reset by stopAudioPlayback
 
+// --- Trim modal state ---
+let trimModalOpen = false;
+let trimAudioEl = null;
+let trimBlobUrl = null;
+let trimContext = null; // { type, sessionId, lineId, session, vocabId, source, defaultFrom, defaultTo, bufferStart, bufferEnd }
+let trimStart = 0;
+let trimEnd = 0;
+let trimAnimFrame = null;
+
 function getAudioElement() {
   if (!audioEl) {
     audioEl = document.createElement('audio');
@@ -1416,6 +1432,247 @@ function getEffectiveTrim(lineId, session, overrides = {}) {
     from: trimStart != null ? trimStart : (prevLine?.audioOffsetSec ?? 0),
     to:   trimEnd != null   ? trimEnd   : line.audioOffsetSec,
   };
+}
+
+// --- Trim modal ---
+
+async function openTrimModal({ type, sessionId, lineId, session, vocabId, source }) {
+  stopAudioPlayback(); // stop any current playback
+
+  const defaultTrim = getEffectiveTrim(lineId, session, source || {});
+  if (!defaultTrim || defaultTrim.to == null) return;
+
+  const totalDuration = session.totalDurationSec || defaultTrim.to + 30;
+  const bufferStart = Math.max(0, defaultTrim.from - 30);
+  const bufferEnd = Math.min(totalDuration, defaultTrim.to + 30);
+
+  // Determine current trim (saved values or defaults)
+  const currentOverrides = source || session.lines.find(l => l.lineId === lineId) || {};
+  const hasSavedTrim = currentOverrides.trimStartSec != null;
+  trimStart = hasSavedTrim ? currentOverrides.trimStartSec : defaultTrim.from;
+  trimEnd = hasSavedTrim ? currentOverrides.trimEndSec : defaultTrim.to;
+
+  trimContext = {
+    type, sessionId, lineId, session, vocabId: vocabId || null,
+    source: source || null,
+    defaultFrom: defaultTrim.from, defaultTo: defaultTrim.to,
+    bufferStart, bufferEnd,
+  };
+
+  // Fetch audio for buffer range
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/audio?from=${bufferStart}&to=${bufferEnd}`);
+    if (!res.ok) throw new Error('Audio fetch failed');
+    const blob = await res.blob();
+    trimBlobUrl = URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('[capitaliano] Trim audio fetch error:', err);
+    return;
+  }
+
+  // Set up audio element
+  if (!trimAudioEl) {
+    trimAudioEl = new Audio();
+    trimAudioEl.addEventListener('timeupdate', onTrimTimeUpdate);
+  }
+  trimAudioEl.src = trimBlobUrl;
+
+  // Populate modal text
+  const line = session.lines.find(l => l.lineId === lineId);
+  const lineText = line?.text || '';
+  const truncText = lineText.length > 40 ? lineText.slice(0, 40) + '...' : lineText;
+  const quote = source?.contextQuote || '';
+
+  if (type === 'vocab' && quote) {
+    document.getElementById('trimTitle').textContent = `Trim: "${quote.length > 40 ? quote.slice(0, 40) + '...' : quote}"`;
+  } else {
+    document.getElementById('trimTitle').textContent = `Trim: Line ${lineId}${truncText ? ': "' + truncText + '"' : ''}`;
+  }
+  document.getElementById('trimSessionName').textContent = session.name || '';
+  document.getElementById('trimContextLabel').textContent =
+    type === 'vocab' && quote ? `Edit clip for "${quote.length > 50 ? quote.slice(0, 50) + '...' : quote}"` :
+    type === 'vocab' ? 'Edit clip for this vocab item' :
+    'Edit clip for this line';
+
+  document.getElementById('trimRangeStart').textContent = formatTrimTime(bufferStart);
+  document.getElementById('trimRangeEnd').textContent = formatTrimTime(bufferEnd);
+
+  updateTrimUI();
+
+  // Open modal
+  document.getElementById('trimBackdrop').classList.add('open');
+  document.getElementById('trimPanel').classList.add('open');
+  trimModalOpen = true;
+}
+
+function closeTrimModal() {
+  document.getElementById('trimBackdrop').classList.remove('open');
+  document.getElementById('trimPanel').classList.remove('open');
+  trimModalOpen = false;
+
+  if (trimAudioEl) {
+    trimAudioEl.pause();
+    trimAudioEl.removeAttribute('src');
+  }
+  if (trimBlobUrl) {
+    URL.revokeObjectURL(trimBlobUrl);
+    trimBlobUrl = null;
+  }
+  if (trimAnimFrame) {
+    cancelAnimationFrame(trimAnimFrame);
+    trimAnimFrame = null;
+  }
+  trimContext = null;
+}
+
+function updateTrimUI() {
+  if (!trimContext) return;
+  const { bufferStart, bufferEnd, defaultFrom, defaultTo } = trimContext;
+  const range = bufferEnd - bufferStart;
+  if (range <= 0) return;
+
+  const toPercent = (sec) => ((sec - bufferStart) / range) * 100;
+
+  // Default region
+  const defRegion = document.getElementById('trimDefaultRegion');
+  defRegion.style.left = toPercent(defaultFrom) + '%';
+  defRegion.style.width = (toPercent(defaultTo) - toPercent(defaultFrom)) + '%';
+
+  // Selected region
+  const selRegion = document.getElementById('trimSelectedRegion');
+  selRegion.style.left = toPercent(trimStart) + '%';
+  selRegion.style.width = (toPercent(trimEnd) - toPercent(trimStart)) + '%';
+
+  // Handles
+  document.getElementById('trimHandleStart').style.left = `calc(${toPercent(trimStart)}% - 3px)`;
+  document.getElementById('trimHandleEnd').style.left = `calc(${toPercent(trimEnd)}% - 3px)`;
+
+  // Time displays
+  document.getElementById('trimTimeStart').textContent = formatTrimTime(trimStart);
+  document.getElementById('trimTimeEnd').textContent = formatTrimTime(trimEnd);
+}
+
+function initTrimDrag(handleId, isStart) {
+  const handle = document.getElementById(handleId);
+  const scrubber = document.getElementById('trimScrubber');
+
+  function onPointerMove(e) {
+    const rect = scrubber.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const { bufferStart, bufferEnd } = trimContext;
+    const sec = bufferStart + (x / rect.width) * (bufferEnd - bufferStart);
+
+    if (isStart) {
+      trimStart = Math.max(bufferStart, Math.min(sec, trimEnd - 0.5));
+    } else {
+      trimEnd = Math.max(trimStart + 0.5, Math.min(sec, bufferEnd));
+    }
+    updateTrimUI();
+  }
+
+  function onPointerUp() {
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+  }
+
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+  });
+}
+
+function onTrimTimeUpdate() {
+  if (!trimContext || !trimAudioEl) return;
+  const { bufferStart, bufferEnd } = trimContext;
+  const currentSec = bufferStart + trimAudioEl.currentTime;
+  const range = bufferEnd - bufferStart;
+  const percent = ((currentSec - bufferStart) / range) * 100;
+  document.getElementById('trimPlayhead').style.left = percent + '%';
+  document.getElementById('trimTimePlayhead').textContent = '\u25B6 ' + formatTrimTime(currentSec);
+
+  // Pause at trim end
+  if (currentSec >= trimEnd) {
+    trimAudioEl.pause();
+  }
+}
+
+function onTrimPlay() {
+  if (!trimAudioEl || !trimContext) return;
+  const { bufferStart } = trimContext;
+  if (trimAudioEl.paused) {
+    trimAudioEl.currentTime = trimStart - bufferStart;
+    trimAudioEl.play();
+  } else {
+    trimAudioEl.pause();
+  }
+}
+
+function onTrimReset() {
+  if (!trimContext) return;
+  trimStart = trimContext.defaultFrom;
+  trimEnd = trimContext.defaultTo;
+  updateTrimUI();
+}
+
+async function onTrimSave() {
+  if (!trimContext) return;
+  const { type, sessionId, lineId, vocabId, source, session } = trimContext;
+
+  try {
+    if (type === 'line') {
+      const res = await fetch(`/api/sessions/${sessionId}/lines/${lineId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trimStartSec: trimStart, trimEndSec: trimEnd }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      // Update in-memory session data
+      const line = session.lines.find(l => l.lineId === lineId);
+      if (line) { line.trimStartSec = trimStart; line.trimEndSec = trimEnd; }
+      // Invalidate cache so next load gets fresh data
+      sessionDataCache.delete(sessionId);
+    } else if (type === 'vocab') {
+      const res = await fetch(`/api/saved-vocab/${vocabId}/trim`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, lineId, trimStartSec: trimStart, trimEndSec: trimEnd }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      // Update in-memory source
+      if (source) { source.trimStartSec = trimStart; source.trimEndSec = trimEnd; }
+    }
+  } catch (err) {
+    console.error('[capitaliano] Trim save error:', err);
+    return; // Don't close on error
+  }
+
+  updateTrimIcons();
+  closeTrimModal();
+}
+
+function updateTrimIcons() {
+  // Transcript line trim icons
+  document.querySelectorAll('.line-trim-btn').forEach(btn => {
+    const lid = parseInt(btn.dataset.lineId, 10);
+    const line = currentSession?.lines?.find(l => l.lineId === lid);
+    btn.classList.toggle('trimmed', line?.trimStartSec != null);
+  });
+  // In-session vocab panel trim icons (these trim the parent line)
+  document.querySelectorAll('.vocab-trim-btn').forEach(btn => {
+    const lid = parseInt(btn.dataset.lineId, 10);
+    if (isNaN(lid)) return;
+    const line = currentSession?.lines?.find(l => l.lineId === lid);
+    btn.classList.toggle('trimmed', line?.trimStartSec != null);
+  });
+  // Saved vocab trim icons
+  document.querySelectorAll('.saved-vocab-trim-btn').forEach(btn => {
+    const vid = btn.dataset.vocabId;
+    if (!vid) return;
+    const entry = savedVocabCache?.find(e => e.id === vid);
+    const hasTrim = entry?.sources?.some(s => s.trimStartSec != null);
+    btn.classList.toggle('trimmed', !!hasTrim);
+  });
 }
 
 // Shared audio playback: plays the audio range for a single line within the
@@ -1549,5 +1806,14 @@ document.querySelectorAll('#vocab-panel .filter-chip').forEach(chip => {
     renderVocab();
   });
 });
+
+// Trim modal event listeners
+document.getElementById('trimBackdrop').addEventListener('click', closeTrimModal);
+document.getElementById('trimCancelBtn').addEventListener('click', closeTrimModal);
+document.getElementById('trimPlayBtn').addEventListener('click', onTrimPlay);
+document.getElementById('trimResetBtn').addEventListener('click', onTrimReset);
+document.getElementById('trimSaveBtn').addEventListener('click', onTrimSave);
+initTrimDrag('trimHandleStart', true);
+initTrimDrag('trimHandleEnd', false);
 
 connectPersistentWs();
