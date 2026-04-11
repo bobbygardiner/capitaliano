@@ -480,6 +480,20 @@ function createLineElement(lineId, text, timestamp, audioOffsetSec) {
       playLineAudio(lineId);
     });
     ts.appendChild(playBtn);
+
+    // Look up the line object to check for existing trim
+    const lineObj = currentSession?.lines?.find(l => l.lineId === lineId);
+    const trimBtn = document.createElement('span');
+    trimBtn.className = 'line-trim-btn' + (lineObj?.trimStartSec != null ? ' trimmed' : '');
+    trimBtn.dataset.lineId = lineId;
+    trimBtn.textContent = '\u2702';
+    trimBtn.title = 'Trim audio clip';
+    trimBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!currentSession) return;
+      openTrimModal({ type: 'line', sessionId: currentSession.id, lineId, session: currentSession });
+    });
+    ts.appendChild(trimBtn);
   }
 
   const tsText = document.createTextNode(formatElapsed(timestamp));
@@ -1060,7 +1074,7 @@ function renderVocab() {
         <div class="vocab-expression-row">
           <div class="vocab-expression">
             <span class="bucket-dot bucket-${bucket}"></span>
-            ${item.hasAudio ? '<span class="vocab-play-btn" title="Play audio">\u25B6</span> ' : ''}
+            ${item.hasAudio ? '<span class="vocab-play-btn" title="Play audio">\u25B6</span><span class="vocab-trim-btn" data-line-id="' + item.lineId + '" title="Trim audio">\u2702</span> ' : ''}
             ${escapeHtml(item.expression)}
           </div>
           <button class="vocab-star-btn ${isSaved ? 'saved' : ''}" title="${isSaved ? 'Remove from saved' : 'Save vocab'}">${isSaved ? '★' : '☆'}</button>
@@ -1074,6 +1088,14 @@ function renderVocab() {
           e.stopPropagation();
           playLineAudio(item.lineId);
         });
+        const trimBtnEl = el.querySelector('.vocab-trim-btn');
+        if (trimBtnEl) {
+          trimBtnEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!currentSession) return;
+            openTrimModal({ type: 'line', sessionId: currentSession.id, lineId: item.lineId, session: currentSession });
+          });
+        }
       }
       el.querySelector('.vocab-star-btn').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1205,7 +1227,7 @@ function renderSavedVocab() {
         <div class="saved-vocab-source">${sourceLine}</div>
       </div>
       <div class="saved-vocab-actions">
-        ${hasAudio ? '<button class="saved-vocab-play-btn" title="Play audio">\u25B6</button>' : ''}
+        ${hasAudio ? '<button class="saved-vocab-play-btn" title="Play audio">\u25B6</button><button class="saved-vocab-trim-btn' + (firstSource.trimStartSec != null ? ' trimmed' : '') + '" data-vocab-id="' + entry.id + '" title="Trim audio">\u2702</button>' : ''}
         <button class="vocab-star-btn saved" title="Remove from saved">★</button>
       </div>
     `;
@@ -1220,6 +1242,25 @@ function renderSavedVocab() {
         e.stopPropagation();
         playSavedVocabAudio(firstSource, playBtn);
       });
+      const trimBtnEl = row.querySelector('.saved-vocab-trim-btn');
+      if (trimBtnEl) {
+        trimBtnEl.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            const session = await loadSessionCached(firstSource.sessionId);
+            openTrimModal({
+              type: 'vocab',
+              sessionId: firstSource.sessionId,
+              lineId: firstSource.lineId,
+              session,
+              vocabId: entry.id,
+              source: firstSource,
+            });
+          } catch (err) {
+            console.error('[capitaliano] Trim modal error:', err);
+          }
+        });
+      }
     }
 
     listEl.appendChild(row);
