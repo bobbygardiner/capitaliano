@@ -36,6 +36,22 @@ const PORT = 3000;
 const RE_SESSION_ID = /^\/api\/sessions\/(sess_\d+)$/;
 const RE_SESSION_END = /^\/api\/sessions\/(sess_\d+)\/end$/;
 const RE_SESSION_AUDIO = /^\/api\/sessions\/(sess_\d+)\/audio$/;
+const RE_SESSION_LINE = /^\/api\/sessions\/(sess_\d+)\/lines\/(\d+)$/;
+const RE_SAVED_VOCAB_TRIM = /^\/api\/saved-vocab\/(sv_\d+)\/trim$/;
+
+function validateTrim(trimStartSec, trimEndSec, totalDurationSec) {
+  if (trimStartSec === null && trimEndSec === null) return null; // clearing trim
+  if (typeof trimStartSec !== 'number' || typeof trimEndSec !== 'number') {
+    return 'trimStartSec and trimEndSec must both be numbers or both be null';
+  }
+  if (trimStartSec < 0) return 'trimStartSec must be >= 0';
+  if (totalDurationSec != null && trimEndSec > totalDurationSec) {
+    return 'trimEndSec must be <= totalDurationSec';
+  }
+  if (trimStartSec >= trimEndSec) return 'trimStartSec must be < trimEndSec';
+  if (trimEndSec - trimStartSec < 0.5) return 'trim duration must be >= 0.5s';
+  return null;
+}
 
 // cleanText regexes (hoisted to avoid per-call compilation)
 const RE_MISSING_SPACE_CAMEL = /([a-zà-ž])([A-ZÀ-Ž])/g;
@@ -136,6 +152,34 @@ const server = createServer(async (req, res) => {
         return sendJson(res, created ? 201 : 200, { entry, created });
       }
 
+      const vocabTrimMatch = urlPath.match(RE_SAVED_VOCAB_TRIM);
+      if (vocabTrimMatch && req.method === 'PATCH') {
+        const vocabId = vocabTrimMatch[1];
+        const body = await readBody(req);
+        const { sessionId, lineId, trimStartSec = null, trimEndSec = null } = body;
+        if (!sessionId || lineId == null) {
+          return sendJson(res, 400, { error: 'sessionId and lineId are required' });
+        }
+
+        // Get totalDurationSec for validation
+        let totalDurationSec = null;
+        try {
+          const session = await sessions.get(sessionId);
+          totalDurationSec = session.totalDurationSec;
+          if (totalDurationSec == null) {
+            const pcmPath = resolve('sessions', `${sessionId}.pcm`);
+            try { const st = await stat(pcmPath); totalDurationSec = st.size / 32000; } catch {}
+          }
+        } catch {}
+
+        const err = validateTrim(trimStartSec, trimEndSec, totalDurationSec);
+        if (err) return sendJson(res, 400, { error: err });
+
+        const entry = savedVocab.updateSourceTrim(vocabId, sessionId, lineId, trimStartSec, trimEndSec);
+        if (!entry) return sendJson(res, 404, { error: 'Vocab entry or source not found' });
+        return sendJson(res, 200, { entry });
+      }
+
       const audioMatch = urlPath.match(RE_SESSION_AUDIO);
       if (audioMatch && req.method === 'GET') {
         const id = audioMatch[1];
@@ -192,6 +236,29 @@ const server = createServer(async (req, res) => {
         } catch {}
         const result = await sessions.end({ totalDurationSec });
         return sendJson(res, 200, result);
+      }
+
+      const lineMatch = urlPath.match(RE_SESSION_LINE);
+      if (lineMatch && req.method === 'PATCH') {
+        const id = lineMatch[1];
+        const lineId = parseInt(lineMatch[2], 10);
+        const body = await readBody(req);
+        const { trimStartSec = null, trimEndSec = null } = body;
+
+        // Get totalDurationSec for validation
+        const session = await sessions.get(id);
+        let totalDurationSec = session.totalDurationSec;
+        if (totalDurationSec == null) {
+          const pcmPath = resolve('sessions', `${id}.pcm`);
+          try { const st = await stat(pcmPath); totalDurationSec = st.size / 32000; } catch {}
+        }
+
+        const err = validateTrim(trimStartSec, trimEndSec, totalDurationSec);
+        if (err) return sendJson(res, 400, { error: err });
+
+        const ok = await sessions.updateLineDisk(id, lineId, { trimStartSec, trimEndSec });
+        if (!ok) return sendJson(res, 404, { error: 'Line not found' });
+        return sendJson(res, 200, { trimStartSec, trimEndSec });
       }
 
       const idMatch = urlPath.match(RE_SESSION_ID);
