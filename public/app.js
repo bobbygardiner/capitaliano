@@ -1402,24 +1402,35 @@ async function loadSessionCached(sessionId) {
   return session;
 }
 
+function getEffectiveTrim(lineId, session, overrides = {}) {
+  const lines = session.lines || [];
+  const idx = lines.findIndex(l => l.lineId === lineId);
+  if (idx === -1) return null;
+  const line = lines[idx];
+  const prevLine = idx > 0 ? lines[idx - 1] : null;
+
+  const trimStart = overrides.trimStartSec ?? line.trimStartSec;
+  const trimEnd = overrides.trimEndSec ?? line.trimEndSec;
+
+  return {
+    from: trimStart != null ? trimStart : (prevLine?.audioOffsetSec ?? 0),
+    to:   trimEnd != null   ? trimEnd   : line.audioOffsetSec,
+  };
+}
+
 // Shared audio playback: plays the audio range for a single line within the
 // given session, handling stop-toggle and button state. `key` uniquely
 // identifies this playback context so repeated clicks toggle rather than restart.
-async function playLineRange(session, lineId, btn, key) {
+async function playLineRange(session, lineId, btn, key, overrides = {}) {
   if (playingKey === key) {
     stopAudioPlayback();
     return;
   }
   stopAudioPlayback();
 
-  const lines = session.lines || [];
-  const idx = lines.findIndex(l => l.lineId === lineId);
-  if (idx === -1) return;
-  const line = lines[idx];
-  const prevLine = idx > 0 ? lines[idx - 1] : null;
-  const from = prevLine?.audioOffsetSec ?? 0;
-  const to = line.audioOffsetSec;
-  if (to == null) return;
+  const trim = getEffectiveTrim(lineId, session, overrides);
+  if (!trim || trim.to == null) return;
+  const { from, to } = trim;
 
   try {
     const res = await fetch(`/api/sessions/${session.id}/audio?from=${from}&to=${to}`);
@@ -1452,7 +1463,7 @@ async function playLineAudio(lineId) {
 async function playSavedVocabAudio(source, btn) {
   try {
     const session = await loadSessionCached(source.sessionId);
-    await playLineRange(session, source.lineId, btn, `saved:${source.sessionId}:${source.lineId}`);
+    await playLineRange(session, source.lineId, btn, `saved:${source.sessionId}:${source.lineId}`, source);
   } catch (err) {
     console.error('[capitaliano] Saved vocab audio error:', err);
   }
