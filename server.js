@@ -183,7 +183,14 @@ const server = createServer(async (req, res) => {
         if (!active || active.id !== endMatch[1]) {
           return sendJson(res, 409, { error: 'Session is not the active session' });
         }
-        const result = await sessions.end();
+        // Compute totalDurationSec from PCM file size
+        let totalDurationSec = null;
+        const pcmPath = resolve('sessions', `${endMatch[1]}.pcm`);
+        try {
+          const st = await stat(pcmPath);
+          totalDurationSec = st.size / 32000;
+        } catch {}
+        const result = await sessions.end({ totalDurationSec });
         return sendJson(res, 200, result);
       }
 
@@ -192,6 +199,14 @@ const server = createServer(async (req, res) => {
         const id = idMatch[1];
         if (req.method === 'GET') {
           const session = await sessions.get(id);
+          // Backfill totalDurationSec for legacy sessions
+          if (session.endedAt && session.totalDurationSec == null) {
+            const pcmPath = resolve('sessions', `${id}.pcm`);
+            try {
+              const st = await stat(pcmPath);
+              session.totalDurationSec = st.size / 32000;
+            } catch {}
+          }
           return sendJson(res, 200, session);
         } else if (req.method === 'DELETE') {
           await sessions.remove(id);
