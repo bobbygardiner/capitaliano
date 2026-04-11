@@ -1857,4 +1857,22 @@ document.getElementById('trimSaveBtn').addEventListener('click', onTrimSave);
 initTrimDrag('trimHandleStart', true);
 initTrimDrag('trimHandleEnd', false);
 
+document.getElementById('trimScrubber').addEventListener('click', (e) => {
+  if (!trimContext || !trimAudioEl) return;
+  // Don't interfere with handle drags
+  if (e.target.classList.contains('trim-handle')) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const { bufferStart, bufferEnd } = trimContext;
+  const sec = bufferStart + (x / rect.width) * (bufferEnd - bufferStart);
+  trimAudioEl.currentTime = sec - bufferStart;
+  onTrimTimeUpdate(); // immediate visual update
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && trimModalOpen) {
+    closeTrimModal();
+  }
+});
+
 connectPersistentWs();
