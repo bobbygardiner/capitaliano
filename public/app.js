@@ -299,6 +299,10 @@ contextSearchToggle.addEventListener('change', async () => {
     const data = await res.json();
     sessionContextInput.value = data.context;
     contextSearchLabel.textContent = `Context found ($${data.costUsd.toFixed(2)})`;
+    if (data.costUsd) {
+      sessionCostUsd += data.costUsd;
+      updateCostDisplay();
+    }
   } catch (err) {
     console.error('[capitaliano] Context search failed:', err);
     contextSearchLabel.textContent = 'Search failed';
